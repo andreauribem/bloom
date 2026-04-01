@@ -1,3 +1,5 @@
-
-# game state
+node_modules/
+.next/
+.env.local
 data/
+*.tsbuildinfo
