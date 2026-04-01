@@ -164,7 +164,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
               </button>
             ))}
           </div>
-          <button onClick={fetchTasks}
+          <button onClick={() => fetchTasks()}
             className="bg-white rounded-2xl px-3 py-1.5 text-xs font-bold text-gray-400 shadow-soft border border-gray-100 hover:border-petal-200 transition-colors">
             🔄
           </button>
