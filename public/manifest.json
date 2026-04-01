@@ -1,0 +1,9 @@
+{
+  "name": "Bloom",
+  "short_name": "Bloom",
+  "description": "Your cozy lil biz adventure",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdf2f8",
+  "theme_color": "#f9a8d4"
+}
