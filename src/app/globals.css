@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  --pink: #ff2d7e;
+  --lavender: #8b4fff;
+  --cream: #fdf8f0;
+  --blush: #fce8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--cream);
+  font-family: 'Nunito', sans-serif;
+  overflow-x: hidden;
+}
+
+/* Pixel sparkle decoration */
+.pixel-sparkle {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--pink);
+  box-shadow:
+    0 -8px 0 var(--pink),
+    0 8px 0 var(--pink),
+    -8px 0 0 var(--pink),
+    8px 0 0 var(--pink);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--blush); border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: #ff94c2; border-radius: 99px; }
+
+/* Progress bar */
+.xp-bar {
+  background: linear-gradient(90deg, #ff2d7e, #ff94c2);
+}
+
+/* Card hover */
+.quest-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.quest-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(255, 45, 126, 0.15);
+}
+
+/* Star burst animation */
+@keyframes starBurst {
+  0% { transform: scale(0) rotate(0deg); opacity: 1; }
+  100% { transform: scale(3) rotate(180deg); opacity: 0; }
+}
+.star-burst {
+  animation: starBurst 0.6s ease-out forwards;
+}
+
+/* Pet float */
+@keyframes petFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.pet-float {
+  animation: petFloat 3s ease-in-out infinite;
+}
+
+/* Shake on sad */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+.pet-shake {
+  animation: shake 0.4s ease-in-out;
+}
