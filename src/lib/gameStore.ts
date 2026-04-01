@@ -1,5 +1,3 @@
-'use client'
-
 import { checkEvolution, getStageForLevel, PetStage } from './petEvolution'
 
 // ── Types ──────────────────────────────────────────────────────────────────
