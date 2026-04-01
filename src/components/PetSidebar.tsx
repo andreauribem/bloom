@@ -246,7 +246,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
       >
         <p className="text-xs font-bold text-gray-700">📋 Daily Check-in</p>
         <p className="text-xs text-gray-400 mt-0.5">
-          feeds hunger 🍔 + cleanliness 🫧
+          restores energy ⚡
         </p>
       </button>
 
@@ -390,9 +390,9 @@ function DailyCheckin({ state, onSave, onClose }: { state: GameState; onSave: (s
     const score = Object.values(checks).filter(Boolean).length
     const delta = score * 12 - 15
     const wellness = Math.min(100, Math.max(0, state.wellness + delta))
-    const hunger = Math.min(100, state.hunger + score * 5)
-    const cleanliness = Math.min(100, (state.cleanliness ?? 70) + score * 8)
-    const next = { ...state, wellness, hunger, cleanliness, dailyChecks: [...otherChecks, check] }
+    // Check-in ONLY boosts energy — self-care = energy for your pet
+    const energy = Math.min(100, (state.energy ?? 70) + score * 10)
+    const next = { ...state, wellness, energy, dailyChecks: [...otherChecks, check] }
     const petMood: GameState['petMood'] = wellness >= 80 ? 'excited' : wellness >= 50 ? 'happy' : wellness >= 30 ? 'neutral' : 'tired'
     onSave({ ...next, petMood })
   }
@@ -404,7 +404,7 @@ function DailyCheckin({ state, onSave, onClose }: { state: GameState; onSave: (s
         initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
         onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-black text-gray-800 mb-1 text-center">Daily Check-in 📋</h2>
-        <p className="text-xs text-gray-400 text-center mb-4">feeds your pet&apos;s hunger 🍔 & cleanliness 🫧</p>
+        <p className="text-xs text-gray-400 text-center mb-4">taking care of yourself restores ⚡ energy</p>
         <div className="flex flex-col gap-3 mb-5">
           {items.map(({ key, label, emoji }) => (
             <button key={key}

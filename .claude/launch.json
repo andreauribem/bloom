@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "questapp",
+      "type": "url",
+      "url": "http://localhost:3000"
+    }
+  ]
+}

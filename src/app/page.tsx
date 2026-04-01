@@ -191,9 +191,9 @@ function PetDetails({ state, onStateChange, petEmoji }: {
         {/* 4 Need bars */}
         <div className="w-full space-y-2">
           <MobileNeedBar label="🍔 Hunger" value={state.hunger} hint="complete tasks" />
-          <MobileNeedBar label="💕 Happiness" value={state.happiness ?? 70} hint="complete tasks" />
-          <MobileNeedBar label="⚡ Energy" value={state.energy ?? 70} hint="complete tasks" />
-          <MobileNeedBar label="🫧 Cleanliness" value={state.cleanliness ?? 70} hint="do check-in" />
+          <MobileNeedBar label="💕 Happiness" value={state.happiness ?? 70} hint="redeem a reward" />
+          <MobileNeedBar label="⚡ Energy" value={state.energy ?? 70} hint="do daily check-in" />
+          <MobileNeedBar label="🫧 Cleanliness" value={state.cleanliness ?? 70} hint="keep your streak" />
         </div>
 
         {/* XP bar */}

@@ -260,15 +260,15 @@ export function getPetPhrase(state: GameState): string {
   const lowest = Math.min(h, ha, e, c)
   if (lowest < 20) {
     if (h === lowest) return '~I\'m so hungry... complete a task!~'
-    if (ha === lowest) return '~I\'m feeling sad... let\'s do something~'
-    if (e === lowest) return '~I\'m so tired... need energy~'
-    if (c === lowest) return '~I need a bath... do a check-in~'
+    if (ha === lowest) return '~I\'m feeling sad... treat yourself!~'
+    if (e === lowest) return '~I\'m so tired... do your check-in!~'
+    if (c === lowest) return '~I need a bath... keep your streak!~'
   }
   if (lowest < 35) {
     if (h === lowest) return '~getting hungry... work time?~'
-    if (ha === lowest) return '~could use some cheering up~'
-    if (e === lowest) return '~running low on energy~'
-    if (c === lowest) return '~feeling a bit icky~'
+    if (ha === lowest) return '~redeem a reward to cheer me up~'
+    if (e === lowest) return '~running low on energy... self-care?~'
+    if (c === lowest) return '~keep showing up daily for me~'
   }
   return '~let\'s do this!~'
 }
@@ -419,10 +419,13 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
   let newLevel = state.level
   while (newXp >= xpForLevel(newLevel)) { newXp -= xpForLevel(newLevel); newLevel++ }
 
-  // Tasks feed multiple needs — this is the PRIMARY way to care for your pet
+  // Tasks ONLY feed hunger — the PRIMARY loop
   const hunger = clampNeed(state.hunger + 15)
-  const happiness = clampNeed((state.happiness ?? 70) + 10)
-  const energy = clampNeed((state.energy ?? 70) + 8)
+
+  // Streak maintenance feeds cleanliness — consistency = order
+  const streakChanged = state.lastActiveDate !== today
+  const cleanlinessBoost = streakChanged ? (newStreak >= 7 ? 25 : newStreak >= 3 ? 15 : 10) : 0
+  const cleanliness = clampNeed((state.cleanliness ?? 70) + cleanlinessBoost)
 
   const evolved = checkEvolution(oldLevel, newLevel)
   const newStage = getStageForLevel(newLevel)
@@ -442,8 +445,7 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
     dailyXP,
     dailyXPDate: today,
     hunger,
-    happiness,
-    energy,
+    cleanliness,
     lastHungerTick: now,
     lastNeedsTick: now,
     totalTasksCompleted: state.totalTasksCompleted + 1,
@@ -471,10 +473,25 @@ export function updateWellness(state: GameState, checks: DailyCheck): GameState 
   const score = [checks.slept, checks.exercised, checks.water, checks.noPhone, checks.learned].filter(Boolean).length
   const delta = score * 12 - 15
   const wellness = Math.min(100, Math.max(0, state.wellness + delta))
-  // Check-ins feed hunger and cleanliness
-  const hunger = clampNeed(state.hunger + score * 5)
-  const cleanliness = clampNeed((state.cleanliness ?? 70) + score * 8)
-  const next = { ...state, wellness, hunger, cleanliness }
+  // Check-ins ONLY feed energy — taking care of yourself = energy for your pet
+  const energy = clampNeed((state.energy ?? 70) + score * 10)
+  const next = { ...state, wellness, energy }
+  return { ...next, petMood: deriveMood(next) }
+}
+
+// Redeeming rewards feeds happiness — treating yourself = happy pet
+export function boostHappiness(state: GameState, amount = 20): GameState {
+  const happiness = clampNeed((state.happiness ?? 70) + amount)
+  const next = { ...state, happiness }
+  return { ...next, petMood: deriveMood(next) }
+}
+
+// Maintaining streak feeds cleanliness — consistency = order
+export function updateCleanliness(state: GameState): GameState {
+  // Called when streak is maintained (new day with activity)
+  const boost = state.streak >= 7 ? 25 : state.streak >= 3 ? 15 : 10
+  const cleanliness = clampNeed((state.cleanliness ?? 70) + boost)
+  const next = { ...state, cleanliness }
   return { ...next, petMood: deriveMood(next) }
 }
 

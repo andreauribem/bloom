@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { GameState, Reward, spendStars, saveState } from '@/lib/gameStore'
+import { GameState, Reward, spendStars, saveState, boostHappiness } from '@/lib/gameStore'
 
 type Props = {
   state: GameState
@@ -17,8 +17,11 @@ export default function RewardStore({ state, onStateChange }: Props) {
   function redeem(reward: Reward) {
     if (state.stars < reward.cost) return
     setCelebrating(reward.id)
+    // Redeeming rewards boosts happiness — treating yourself = happy pet 💕
+    const spent = spendStars(state, reward.cost)
+    const happier = boostHappiness(spent, 20)
     const next: GameState = {
-      ...spendStars(state, reward.cost),
+      ...happier,
       rewards: state.rewards.map(r =>
         r.id === reward.id ? { ...r, redeemed: true } : r
       ),
