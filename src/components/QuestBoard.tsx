@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { QuestTask } from '@/lib/notion'
 import { GameState, earnStars, saveState, getComboLabel, getComboMultiplier, xpForLevel, formatTime } from '@/lib/gameStore'
 import {
-  LevelUpModal, AchievementToast, ComboBanner, StarBurst, CelebEvent
+  LevelUpModal, AchievementToast, ComboBanner, StarBurst, EvolutionModal, CelebEvent
 } from './CelebrationModals'
 import { Achievement } from '@/lib/gameStore'
+import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel } from '@/lib/petEvolution'
 
 type Props = {
   state: GameState
@@ -83,6 +84,15 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       if (comboLabel && result.comboMultiplier > 1) {
         pushCeleb({ type: 'combo', label: comboLabel, starsEarned: result.starsEarned })
       }
+      if (result.evolved) {
+        const newStage = getStageForLevel(result.newLevel)
+        pushCeleb({
+          type: 'evolution',
+          petEmoji: getPetEmoji(state.petId, result.newLevel),
+          aura: getLegendaryAura(state.petId),
+          stageName: getStageLabel(newStage),
+        })
+      }
       if (result.leveledUp) {
         pushCeleb({ type: 'levelup', level: result.newLevel })
       }
@@ -131,6 +141,9 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         )}
         {current?.type === 'combo' && (
           <ComboBanner key="combo" label={current.label} starsEarned={current.starsEarned} />
+        )}
+        {current?.type === 'evolution' && (
+          <EvolutionModal key="evo" petEmoji={current.petEmoji} aura={current.aura} stageName={current.stageName} onClose={popCeleb} />
         )}
       </AnimatePresence>
 

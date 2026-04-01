@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS } from '@/lib/gameStore'
+import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel } from '@/lib/gameStore'
+import { getPetEmoji } from '@/lib/petEvolution'
 import { DailyCheckinModal, PetPickerModal, AchievementsModal } from './Modals'
 
 type Props = {
@@ -17,14 +18,18 @@ export default function MobileHeader({ state, onStateChange }: Props) {
   const [showStats, setShowStats] = useState(false)
 
   const pet = PETS.find(p => p.id === state.petId) ?? PETS[0]
+  const petEmoji = getPetEmoji(state.petId, state.level)
   const xpPercent = Math.round((state.xp / xpForLevel(state.level)) * 100)
   const unlockedCount = state.achievements.filter(a => a.unlockedAt).length
   const today = new Date().toISOString().split('T')[0]
   const dailyXP = state.dailyXPDate === today ? state.dailyXP : 0
   const dailyProgress = Math.min(100, (dailyXP / state.dailyXPGoal) * 100)
+  const overallHealth = getOverallHealth(state)
+  const healthInfo = getHealthLabel(overallHealth)
 
   const moodEmoji = state.petMood === 'excited' ? '🤩'
     : state.petMood === 'happy' ? '😊'
+    : state.petMood === 'hungry' ? '😣'
     : state.petMood === 'tired' ? '😴'
     : '🙂'
 
@@ -39,7 +44,7 @@ export default function MobileHeader({ state, onStateChange }: Props) {
             className="relative shrink-0"
           >
             <div className="w-12 h-12 rounded-2xl bg-petal-50 flex items-center justify-center text-2xl border-2 border-petal-200">
-              {pet.sprite}
+              {petEmoji}
             </div>
             <span className="absolute -top-1 -right-1 text-xs bg-petal-500 text-white rounded-full px-1 py-0.5 font-black leading-none">
               {state.level}
@@ -103,14 +108,14 @@ export default function MobileHeader({ state, onStateChange }: Props) {
                   </div>
                 </div>
 
-                {/* Wellness */}
+                {/* Pet Health */}
                 <div className="col-span-2 bg-lavender-50 rounded-2xl p-2.5">
                   <div className="flex justify-between mb-1">
-                    <span className="text-xs text-gray-500 font-bold">💗 Wellness</span>
-                    <span className="text-xs text-lavender-500 font-black">{state.wellness}%</span>
+                    <span className="text-xs text-gray-500 font-bold">{healthInfo.emoji} Pet Health</span>
+                    <span className={`text-xs font-black ${healthInfo.color}`}>{overallHealth}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-lavender-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-lavender-400 rounded-full transition-all" style={{ width: `${state.wellness}%` }} />
+                    <div className={`h-full rounded-full transition-all ${overallHealth >= 60 ? 'bg-green-400' : overallHealth >= 30 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${overallHealth}%` }} />
                   </div>
                 </div>
 

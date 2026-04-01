@@ -141,10 +141,74 @@ export function StarBurst({ count, x, y }: { count: number; x: number; y: number
   )
 }
 
+// ── Evolution Modal ───────────────────────────────────────────────────────
+export function EvolutionModal({ petEmoji, aura, stageName, onClose }: {
+  petEmoji: string; aura: string; stageName: string; onClose: () => void
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000)
+    return () => clearTimeout(t)
+  }, [onClose])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    >
+      {/* Sparkle burst */}
+      {Array.from({ length: 24 }).map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute text-xl pointer-events-none"
+          style={{ left: '50%', top: '50%' }}
+          initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
+          animate={{
+            x: (Math.random() - 0.5) * 500,
+            y: (Math.random() - 0.5) * 400,
+            scale: [0, 1.5, 0],
+            opacity: [1, 1, 0],
+          }}
+          transition={{ duration: 1.5, delay: i * 0.04, ease: 'easeOut' }}
+        >
+          {['✨', '⭐', '🌟', '💫', '🌸'][i % 5]}
+        </motion.div>
+      ))}
+
+      <motion.div
+        className="bg-white rounded-3xl p-8 shadow-2xl text-center max-w-xs mx-4 pointer-events-auto border-4 border-lavender-300"
+        initial={{ scale: 0, rotate: -10 }}
+        animate={{ scale: 1, rotate: 0 }}
+        exit={{ scale: 0, opacity: 0 }}
+        transition={{ type: 'spring', bounce: 0.5 }}
+      >
+        <motion.div
+          className="text-6xl mb-3"
+          initial={{ scale: 0.3, opacity: 0 }}
+          animate={{ scale: [0.3, 1.4, 1], opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.3, ease: 'easeOut' }}
+        >
+          {aura}{petEmoji}
+        </motion.div>
+        <p className="text-xs font-bold text-lavender-500 uppercase tracking-widest mb-1">Your pet evolved!</p>
+        <p className="text-3xl font-black text-gray-800 mb-2">{stageName}</p>
+        <p className="text-sm text-gray-500">Keep working to unlock the next stage 🌸</p>
+        <motion.div
+          className="mt-4 text-2xl"
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ repeat: Infinity, duration: 1 }}
+        >
+          🌟✨🌟
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ── Orchestrator: manages queue of celebrations ────────────────────────────
 type CelebEvent =
   | { type: 'levelup'; level: number }
   | { type: 'achievement'; achievement: Achievement }
   | { type: 'combo'; label: string; starsEarned: number }
+  | { type: 'evolution'; petEmoji: string; aura: string; stageName: string }
 
 export type { CelebEvent }

@@ -1,5 +1,7 @@
 'use client'
 
+import { checkEvolution, getStageForLevel, PetStage } from './petEvolution'
+
 // ── Types ──────────────────────────────────────────────────────────────────
 export type Pet = {
   id: string
@@ -39,9 +41,14 @@ export type GameState = {
   stars: number
   xp: number
   level: number
-  wellness: number       // 0–100: affected by daily check-in
-  hunger: number         // 0–100: tamagotchi hunger, decreases over time
-  lastHungerTick: number // timestamp: last time hunger was decremented
+  wellness: number
+  hunger: number
+  happiness: number       // 0–100: tamagotchi happiness
+  energy: number          // 0–100: tamagotchi energy
+  cleanliness: number     // 0–100: tamagotchi cleanliness
+  lastHungerTick: number  // legacy name, now ticks all needs
+  lastNeedsTick: number   // timestamp: last time needs were decremented
+  petStage: PetStage
   rewards: Reward[]
   dailyChecks: DailyCheck[]
   completedTaskIds: string[]
@@ -55,6 +62,13 @@ export type GameState = {
   achievements: Achievement[]
   petMood: 'happy' | 'excited' | 'neutral' | 'tired' | 'hungry'
   totalTasksCompleted: number
+  // Future phases
+  gameTokens: number
+  miniGamesPlayed: number
+  ownedAccessories: string[]
+  equippedHat: string | null
+  equippedBackground: string | null
+  equippedEffect: string | null
 }
 
 // ── Pets ───────────────────────────────────────────────────────────────────
@@ -91,7 +105,12 @@ export const ALL_ACHIEVEMENTS: Omit<Achievement, 'unlockedAt'>[] = [
   { id: 'tasks_10',      title: 'Unstoppable',       description: 'Complete 10 tasks total',             emoji: '💪' },
   { id: 'tasks_50',      title: 'Legend',            description: 'Complete 50 tasks total',             emoji: '🌸' },
   { id: 'wellness_100',  title: 'Glowing',           description: 'Reach 100% wellness',                 emoji: '✨' },
-  { id: 'mochi_fed',     title: 'Good Caretaker',    description: 'Feed your pet 7 times',               emoji: '🍱' },
+  { id: 'mochi_fed',     title: 'Good Caretaker',    description: 'Keep all needs above 80%',            emoji: '🍱' },
+  // Evolution achievements
+  { id: 'evolved_teen',  title: 'Growing Up',        description: 'Evolve your pet to Teen stage',       emoji: '🌱' },
+  { id: 'evolved_adult', title: 'All Grown Up',      description: 'Evolve your pet to Adult stage',      emoji: '🌟' },
+  { id: 'evolved_legend',title: 'Legendary',         description: 'Evolve your pet to Legendary stage',  emoji: '👑' },
+  { id: 'perfect_needs', title: 'Perfect Balance',   description: 'All needs above 80% at once',         emoji: '💎' },
 ]
 
 // ── XP ─────────────────────────────────────────────────────────────────────
@@ -103,12 +122,10 @@ export function xpForLevel(lvl: number): number {
 export function calcStars(
   taskType: string,
   priority: string,
-  timeConsuming: number | null   // hours (e.g. 0.25 = 15min, 1 = 1h)
+  timeConsuming: number | null
 ): number {
-  // Base from time
   let base: number
   if (timeConsuming == null || timeConsuming <= 0) {
-    // Fallback: type-based only
     const typeBase: Record<string, number> = {
       'Strategic Tasks 🧠': 5,
       'Creative / Production Tasks 🏗️': 4,
@@ -123,7 +140,6 @@ export function calcStars(
   else if (timeConsuming < 4)       { base = 8 }
   else                              { base = 12 }
 
-  // Task type multiplier
   const typeMulti: Record<string, number> = {
     'Strategic Tasks 🧠': 1.5,
     'Creative / Production Tasks 🏗️': 1.3,
@@ -131,8 +147,6 @@ export function calcStars(
     'Operational Tasks ⚙️': 1.0,
   }
   const tMult = typeMulti[taskType] ?? 1.0
-
-  // Priority multiplier
   const pMult = priority?.includes('High') ? 2
     : priority?.includes('Medium') ? 1.5
     : 1
@@ -151,33 +165,112 @@ export function formatTime(hours: number | null): string | null {
   return m > 0 ? `~${h}h ${m}m` : `~${h}h`
 }
 
-// ── Tamagotchi: hunger tick ────────────────────────────────────────────────
-const HUNGER_DECAY_PER_HOUR = 8  // loses 8% hunger per hour
+// ── Tamagotchi: needs system ──────────────────────────────────────────────
+// Decay rates per hour
+const NEEDS_DECAY = {
+  hunger: 8,
+  happiness: 5,
+  energy: 6,
+  cleanliness: 4,
+}
 
-export function tickHunger(state: GameState): GameState {
+function clampNeed(v: number): number {
+  return Math.max(0, Math.min(100, v))
+}
+
+export function tickNeeds(state: GameState): GameState {
   const now = Date.now()
-  const currentHunger = Number.isFinite(state.hunger) ? state.hunger : 80
-  const lastTick = state.lastHungerTick || now
+  const lastTick = state.lastNeedsTick || state.lastHungerTick || now
   const hoursElapsed = (now - lastTick) / (1000 * 60 * 60)
-  if (hoursElapsed < 0.05) return { ...state, hunger: currentHunger }  // less than 3 min, just normalize
-  const decay = hoursElapsed * HUNGER_DECAY_PER_HOUR
-  const hunger = Math.max(0, currentHunger - decay)
-  const petMood = deriveMood({ ...state, hunger })
-  return { ...state, hunger, lastHungerTick: now, petMood }
+  if (hoursElapsed < 0.05) {
+    // Normalize fields for old state
+    return {
+      ...state,
+      hunger: Number.isFinite(state.hunger) ? state.hunger : 80,
+      happiness: Number.isFinite(state.happiness) ? state.happiness : 70,
+      energy: Number.isFinite(state.energy) ? state.energy : 70,
+      cleanliness: Number.isFinite(state.cleanliness) ? state.cleanliness : 70,
+      petStage: getStageForLevel(state.level),
+    }
+  }
+
+  const hunger = clampNeed((Number.isFinite(state.hunger) ? state.hunger : 80) - hoursElapsed * NEEDS_DECAY.hunger)
+  const happiness = clampNeed((Number.isFinite(state.happiness) ? state.happiness : 70) - hoursElapsed * NEEDS_DECAY.happiness)
+  const energy = clampNeed((Number.isFinite(state.energy) ? state.energy : 70) - hoursElapsed * NEEDS_DECAY.energy)
+  const cleanliness = clampNeed((Number.isFinite(state.cleanliness) ? state.cleanliness : 70) - hoursElapsed * NEEDS_DECAY.cleanliness)
+
+  const next = { ...state, hunger, happiness, energy, cleanliness, lastNeedsTick: now, lastHungerTick: now, petStage: getStageForLevel(state.level) }
+  return { ...next, petMood: deriveMood(next) }
+}
+
+// Backward compat: tickHunger now calls tickNeeds
+export function tickHunger(state: GameState): GameState {
+  return tickNeeds(state)
 }
 
 export function feedPet(state: GameState, amount = 20): GameState {
-  const hunger = Math.min(100, state.hunger + amount)
+  const hunger = clampNeed(state.hunger + amount)
   const petMood = deriveMood({ ...state, hunger })
   return { ...state, hunger, petMood }
 }
 
+// ── Overall pet health ────────────────────────────────────────────────────
+export function getOverallHealth(state: GameState): number {
+  const h = Number.isFinite(state.hunger) ? state.hunger : 80
+  const ha = Number.isFinite(state.happiness) ? state.happiness : 70
+  const e = Number.isFinite(state.energy) ? state.energy : 70
+  const c = Number.isFinite(state.cleanliness) ? state.cleanliness : 70
+  return Math.round(h * 0.3 + ha * 0.3 + e * 0.2 + c * 0.2)
+}
+
+export function getHealthLabel(health: number): { label: string; emoji: string; color: string } {
+  if (health >= 80) return { label: 'Thriving', emoji: '💖', color: 'text-green-500' }
+  if (health >= 60) return { label: 'Good', emoji: '😊', color: 'text-green-400' }
+  if (health >= 40) return { label: 'Okay', emoji: '😐', color: 'text-yellow-500' }
+  if (health >= 20) return { label: 'Struggling', emoji: '😟', color: 'text-orange-500' }
+  return { label: 'Critical!', emoji: '😰', color: 'text-red-500' }
+}
+
+// ── Mood: reflects lowest need ────────────────────────────────────────────
 function deriveMood(state: GameState): GameState['petMood'] {
-  if (state.hunger < 20) return 'hungry'
+  const h = Number.isFinite(state.hunger) ? state.hunger : 80
+  const ha = Number.isFinite(state.happiness) ? state.happiness : 70
+  const e = Number.isFinite(state.energy) ? state.energy : 70
+  const c = Number.isFinite(state.cleanliness) ? state.cleanliness : 70
+  const lowest = Math.min(h, ha, e, c)
+
+  if (lowest < 20) return 'hungry'  // critical need
   if (state.comboCount >= 5) return 'excited'
   if (state.comboCount >= 2) return 'happy'
-  if (state.wellness < 30) return 'tired'
+  if (lowest < 35) return 'tired'
   return 'neutral'
+}
+
+// ── Pet mood phrases based on lowest need ─────────────────────────────────
+export function getPetPhrase(state: GameState): string {
+  const h = Number.isFinite(state.hunger) ? state.hunger : 80
+  const ha = Number.isFinite(state.happiness) ? state.happiness : 70
+  const e = Number.isFinite(state.energy) ? state.energy : 70
+  const c = Number.isFinite(state.cleanliness) ? state.cleanliness : 70
+
+  if (state.petMood === 'excited') return '~so proud of you!~'
+  if (state.petMood === 'happy') return '~keep going!~'
+
+  // Find which need is lowest for specific phrases
+  const lowest = Math.min(h, ha, e, c)
+  if (lowest < 20) {
+    if (h === lowest) return '~I\'m so hungry... complete a task!~'
+    if (ha === lowest) return '~I\'m feeling sad... let\'s do something~'
+    if (e === lowest) return '~I\'m so tired... need energy~'
+    if (c === lowest) return '~I need a bath... do a check-in~'
+  }
+  if (lowest < 35) {
+    if (h === lowest) return '~getting hungry... work time?~'
+    if (ha === lowest) return '~could use some cheering up~'
+    if (e === lowest) return '~running low on energy~'
+    if (c === lowest) return '~feeling a bit icky~'
+  }
+  return '~let\'s do this!~'
 }
 
 // ── Combo ──────────────────────────────────────────────────────────────────
@@ -204,7 +297,6 @@ export function loadState(): GameState {
   if (typeof window === 'undefined') return defaultState()
   try {
     const raw = localStorage.getItem(KEY)
-    // migrate old key
     const oldRaw = localStorage.getItem('questapp_state_v2') || localStorage.getItem('questapp_state')
     if (raw) return { ...defaultState(), ...JSON.parse(raw) }
     if (oldRaw) {
@@ -231,7 +323,12 @@ function defaultState(): GameState {
     level: 1,
     wellness: 50,
     hunger: 80,
+    happiness: 70,
+    energy: 70,
+    cleanliness: 70,
     lastHungerTick: Date.now(),
+    lastNeedsTick: Date.now(),
+    petStage: 'baby',
     rewards: DEFAULT_REWARDS,
     dailyChecks: [],
     completedTaskIds: [],
@@ -245,6 +342,12 @@ function defaultState(): GameState {
     achievements: ALL_ACHIEVEMENTS.map(a => ({ ...a, unlockedAt: null })),
     petMood: 'neutral',
     totalTasksCompleted: 0,
+    gameTokens: 0,
+    miniGamesPlayed: 0,
+    ownedAccessories: [],
+    equippedHat: null,
+    equippedBackground: null,
+    equippedEffect: null,
   }
 }
 
@@ -252,21 +355,28 @@ function defaultState(): GameState {
 function checkAchievements(state: GameState): { state: GameState; newAchievements: Achievement[] } {
   const today = new Date().toISOString().split('T')[0]
   const newAchievements: Achievement[] = []
+  const allNeeds = [state.hunger, state.happiness, state.energy, state.cleanliness]
+
   const updated = state.achievements.map(a => {
     if (a.unlockedAt) return a
     let unlock = false
     switch (a.id) {
-      case 'first_quest':  unlock = state.totalTasksCompleted >= 1; break
-      case 'combo_3':      unlock = state.comboCount >= 3; break
-      case 'combo_5':      unlock = state.comboCount >= 5; break
-      case 'streak_3':     unlock = state.streak >= 3; break
-      case 'streak_7':     unlock = state.streak >= 7; break
-      case 'level_5':      unlock = state.level >= 5; break
-      case 'level_10':     unlock = state.level >= 10; break
-      case 'daily_goal':   unlock = state.dailyXP >= state.dailyXPGoal; break
-      case 'tasks_10':     unlock = state.totalTasksCompleted >= 10; break
-      case 'tasks_50':     unlock = state.totalTasksCompleted >= 50; break
-      case 'wellness_100': unlock = state.wellness >= 100; break
+      case 'first_quest':   unlock = state.totalTasksCompleted >= 1; break
+      case 'combo_3':       unlock = state.comboCount >= 3; break
+      case 'combo_5':       unlock = state.comboCount >= 5; break
+      case 'streak_3':      unlock = state.streak >= 3; break
+      case 'streak_7':      unlock = state.streak >= 7; break
+      case 'level_5':       unlock = state.level >= 5; break
+      case 'level_10':      unlock = state.level >= 10; break
+      case 'daily_goal':    unlock = state.dailyXP >= state.dailyXPGoal; break
+      case 'tasks_10':      unlock = state.totalTasksCompleted >= 10; break
+      case 'tasks_50':      unlock = state.totalTasksCompleted >= 50; break
+      case 'wellness_100':  unlock = state.wellness >= 100; break
+      case 'perfect_needs': unlock = allNeeds.every(n => n >= 80); break
+      case 'evolved_teen':  unlock = state.petStage === 'teen' || state.petStage === 'adult' || state.petStage === 'legendary'; break
+      case 'evolved_adult': unlock = state.petStage === 'adult' || state.petStage === 'legendary'; break
+      case 'evolved_legend':unlock = state.petStage === 'legendary'; break
+      case 'mochi_fed':     unlock = allNeeds.every(n => n >= 80); break
     }
     if (unlock) { const u = { ...a, unlockedAt: today }; newAchievements.push(u); return u }
     return a
@@ -279,9 +389,11 @@ export type EarnResult = {
   state: GameState
   leveledUp: boolean
   newLevel: number
+  oldLevel: number
   newAchievements: Achievement[]
   starsEarned: number
   comboMultiplier: number
+  evolved: boolean
 }
 
 export function earnStars(state: GameState, baseAmount: number, isBoss = false): EarnResult {
@@ -307,8 +419,16 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
   let newLevel = state.level
   while (newXp >= xpForLevel(newLevel)) { newXp -= xpForLevel(newLevel); newLevel++ }
 
-  // Completing a task feeds the pet
-  const hunger = Math.min(100, state.hunger + 15)
+  // Tasks feed multiple needs — this is the PRIMARY way to care for your pet
+  const hunger = clampNeed(state.hunger + 15)
+  const happiness = clampNeed((state.happiness ?? 70) + 10)
+  const energy = clampNeed((state.energy ?? 70) + 8)
+
+  const evolved = checkEvolution(oldLevel, newLevel)
+  const newStage = getStageForLevel(newLevel)
+
+  // Earn a game token (max 3) — for future mini-games
+  const gameTokens = Math.min(3, (state.gameTokens ?? 0) + 1)
 
   let next: GameState = {
     ...state,
@@ -322,9 +442,14 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
     dailyXP,
     dailyXPDate: today,
     hunger,
+    happiness,
+    energy,
     lastHungerTick: now,
+    lastNeedsTick: now,
     totalTasksCompleted: state.totalTasksCompleted + 1,
     completedTaskIds: state.completedTaskIds,
+    petStage: newStage,
+    gameTokens,
   }
   next.petMood = deriveMood(next)
 
@@ -335,7 +460,7 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
   }
 
   const { state: withAchievements, newAchievements } = checkAchievements(next)
-  return { state: withAchievements, leveledUp: newLevel > oldLevel, newLevel, newAchievements, starsEarned, comboMultiplier: multiplier }
+  return { state: withAchievements, leveledUp: newLevel > oldLevel, newLevel, oldLevel, newAchievements, starsEarned, comboMultiplier: multiplier, evolved }
 }
 
 export function spendStars(state: GameState, amount: number): GameState {
@@ -346,9 +471,10 @@ export function updateWellness(state: GameState, checks: DailyCheck): GameState 
   const score = [checks.slept, checks.exercised, checks.water, checks.noPhone, checks.learned].filter(Boolean).length
   const delta = score * 12 - 15
   const wellness = Math.min(100, Math.max(0, state.wellness + delta))
-  // wellness check also feeds pet
-  const hunger = Math.min(100, state.hunger + score * 5)
-  const next = { ...state, wellness, hunger }
+  // Check-ins feed hunger and cleanliness
+  const hunger = clampNeed(state.hunger + score * 5)
+  const cleanliness = clampNeed((state.cleanliness ?? 70) + score * 8)
+  const next = { ...state, wellness, hunger, cleanliness }
   return { ...next, petMood: deriveMood(next) }
 }
 
