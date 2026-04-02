@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { GameState, Reward, spendStars, saveState, boostHappiness } from '@/lib/gameStore'
+import { GameState, Reward, spendStars, saveState, boostHappiness, getOverallHealth, getHealthPenalties } from '@/lib/gameStore'
 import { hapticSuccess, soundCoin } from '@/lib/feedback'
 import AccessoryShop from './AccessoryShop'
 
@@ -16,7 +16,11 @@ export default function RewardStore({ state, onStateChange }: Props) {
   const [newReward, setNewReward] = useState({ title: '', cost: 30, emoji: '🎁' })
   const [celebrating, setCelebrating] = useState<string | null>(null)
 
+  const health = getOverallHealth(state)
+  const penalties = getHealthPenalties(health)
+
   function redeem(reward: Reward) {
+    if (penalties.rewardStoreLocked) return
     if (state.stars < reward.cost) return
     hapticSuccess()
     soundCoin()
@@ -87,10 +91,18 @@ export default function RewardStore({ state, onStateChange }: Props) {
       </div>
 
       {/* Stars balance */}
-      <div className="bg-gradient-to-r from-petal-500 to-lavender-500 rounded-2xl p-4 text-white text-center">
+      <div className={`rounded-2xl p-4 text-white text-center ${penalties.rewardStoreLocked ? 'bg-gray-400' : 'bg-gradient-to-r from-petal-500 to-lavender-500'}`}>
         <p className="text-xs opacity-80">your balance</p>
         <p className="text-3xl font-black">⭐ {state.stars}</p>
       </div>
+
+      {/* Locked warning */}
+      {penalties.rewardStoreLocked && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center">
+          <p className="text-sm font-black text-red-600">🔒 Store Locked</p>
+          <p className="text-xs text-red-400">Pet health is too low ({health}%). Complete tasks to restore health above 30%.</p>
+        </div>
+      )}
 
       {/* Available rewards */}
       <div className="flex flex-col gap-2">

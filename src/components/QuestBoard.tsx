@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { QuestTask } from '@/lib/notion'
-import { GameState, earnStars, saveState, getComboLabel, getComboMultiplier, xpForLevel, formatTime, applyOverduePenalty } from '@/lib/gameStore'
+import { GameState, earnStars, saveState, getComboLabel, getComboMultiplier, xpForLevel, formatTime, applyOverduePenalty, getOverallHealth, getHealthPenalties } from '@/lib/gameStore'
 import {
   LevelUpModal, AchievementToast, ComboBanner, StarBurst, EvolutionModal, CelebEvent
 } from './CelebrationModals'
@@ -277,12 +277,15 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       soundComplete()
       hapticMedium()
 
-      // Queue celebrations
-      const comboLbl = getComboLabel(result.state.comboCount)
-      if (comboLbl && result.comboMultiplier > 1) {
-        soundCombo()
-        pushCeleb({ type: 'combo', label: comboLbl, starsEarned: result.starsEarned })
-      }
+      const currentPenalties = getHealthPenalties(getOverallHealth(finalState))
+
+      // Queue celebrations (disabled when pet is asleep)
+      if (!currentPenalties.celebrationsDisabled) {
+        const comboLbl = getComboLabel(result.state.comboCount)
+        if (comboLbl && result.comboMultiplier > 1 && !currentPenalties.comboDisabled) {
+          soundCombo()
+          pushCeleb({ type: 'combo', label: comboLbl, starsEarned: result.starsEarned })
+        }
       if (result.evolved) {
         soundEvolution()
         hapticHeavy()
@@ -303,6 +306,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         soundAchievement()
         pushCeleb({ type: 'achievement', achievement: a })
       })
+      } // end celebrations disabled check
     } catch (e) { console.error(e) }
     finally { setCompleting(null) }
   }
@@ -356,12 +360,34 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const dailyXP = state.dailyXPDate === today ? state.dailyXP : 0
   const dailyProgress = Math.min(100, (dailyXP / state.dailyXPGoal) * 100)
   const xpPercent = Math.round((state.xp / xpForLevel(state.level)) * 100)
+  const health = getOverallHealth(state)
+  const penalties = getHealthPenalties(health)
+
   const comboLabel = getComboLabel(state.comboCount)
   const timeSinceCombo = Date.now() - state.lastComboTime
-  const comboActive = timeSinceCombo < 5 * 60 * 1000 && state.comboCount >= 2
+  const comboActive = !penalties.comboDisabled && timeSinceCombo < 5 * 60 * 1000 && state.comboCount >= 2
 
   return (
     <div className="flex-1 flex flex-col gap-4 min-w-0">
+
+      {/* Health warning banner */}
+      {penalties.petAsleep && (
+        <div className="bg-gray-800 rounded-2xl px-4 py-3 text-center">
+          <p className="text-white font-black text-sm">😴 Your pet is asleep...</p>
+          <p className="text-gray-400 text-xs">Complete tasks to wake them up. No celebrations or combos until they recover.</p>
+        </div>
+      )}
+      {penalties.petSick && !penalties.petAsleep && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center">
+          <p className="text-red-600 font-black text-sm">🤒 Your pet is sick!</p>
+          <p className="text-red-400 text-xs">Combos disabled. Reward store locked. Take care of your pet!</p>
+        </div>
+      )}
+      {penalties.rewardStoreLocked && !penalties.petSick && (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-2 text-center">
+          <p className="text-orange-600 text-xs font-bold">⚠️ Pet health too low — Reward Store locked until health &gt; 30%</p>
+        </div>
+      )}
 
       {/* Celebrations */}
       <AnimatePresence mode="wait">

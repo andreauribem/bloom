@@ -236,7 +236,27 @@ export function getHealthLabel(health: number): { label: string; emoji: string; 
   if (health >= 60) return { label: 'Good', emoji: '😊', color: 'text-green-400' }
   if (health >= 40) return { label: 'Okay', emoji: '😐', color: 'text-yellow-500' }
   if (health >= 20) return { label: 'Struggling', emoji: '😟', color: 'text-orange-500' }
-  return { label: 'Critical!', emoji: '😰', color: 'text-red-500' }
+  if (health >= 15) return { label: 'Sick!', emoji: '🤒', color: 'text-red-500' }
+  return { label: 'Asleep...', emoji: '😴', color: 'text-gray-500' }
+}
+
+// ── Health consequences ───────────────────────────────────────────────────
+export type HealthPenalty = {
+  rewardStoreLocked: boolean   // < 30%: can't redeem rewards
+  comboDisabled: boolean       // < 15%: no combo multiplier
+  celebrationsDisabled: boolean // 0%: no fun, no celebrations
+  petSick: boolean             // < 15%: pet looks sick
+  petAsleep: boolean           // 0%: pet is asleep, grayscale
+}
+
+export function getHealthPenalties(health: number): HealthPenalty {
+  return {
+    rewardStoreLocked: health < 30,
+    comboDisabled: health < 15,
+    celebrationsDisabled: health === 0,
+    petSick: health < 15 && health > 0,
+    petAsleep: health === 0,
+  }
 }
 
 // ── Mood: reflects lowest need ────────────────────────────────────────────

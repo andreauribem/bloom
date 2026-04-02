@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase } from '@/lib/gameStore'
+import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
 import { getAccessory } from '@/lib/accessories'
 
@@ -26,6 +26,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
   const unlockedCount = state.achievements.filter(a => a.unlockedAt).length
   const overallHealth = getOverallHealth(state)
   const healthInfo = getHealthLabel(overallHealth)
+  const penalties = getHealthPenalties(overallHealth)
   const nextStage = getNextStageLevelReq(state.level)
 
   // Pet reacts when a task is completed
@@ -69,7 +70,12 @@ export default function PetSidebar({ state, onStateChange }: Props) {
     <aside className="w-64 shrink-0 flex flex-col gap-3 p-4">
       {/* ── Pet card ── */}
       <div
-        className={`bg-white rounded-3xl p-4 shadow-card flex flex-col items-center gap-2 cursor-pointer relative overflow-hidden ${anyCritical ? 'ring-2 ring-red-300 ring-opacity-50' : ''}`}
+        className={`rounded-3xl p-4 shadow-card flex flex-col items-center gap-2 cursor-pointer relative overflow-hidden ${
+          penalties.petAsleep ? 'bg-gray-200 grayscale'
+          : penalties.petSick ? 'bg-red-50 ring-2 ring-red-300'
+          : anyCritical ? 'bg-white ring-2 ring-red-300 ring-opacity-50'
+          : 'bg-white'
+        }`}
         onClick={() => setShowPetPicker(true)}
       >
         {/* Mood background glow */}
