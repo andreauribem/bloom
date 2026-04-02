@@ -25,6 +25,7 @@ export type QuestTask = {
   source: 'sonder' | 'personal'
   notionUrl: string
   daysOverdue: number            // 0 = not overdue, >0 = days past due
+  projectName: string            // from Projects relation
   subtasks?: QuestTask[]
 }
 
@@ -62,6 +63,10 @@ function getRelationCount(page: any, key: string): number {
   return getProp(page, key)?.relation?.length ?? 0
 }
 
+function getRelationIds(page: any, key: string): string[] {
+  return (getProp(page, key)?.relation ?? []).map((r: any) => r.id)
+}
+
 function calcDaysOverdue(dueDate: string | null): number {
   if (!dueDate) return 0
   const today = new Date()
@@ -72,11 +77,15 @@ function calcDaysOverdue(dueDate: string | null): number {
 }
 
 // ── Mappers ────────────────────────────────────────────────────────────────
-function mapSonderTask(page: any): QuestTask {
+function mapSonderTask(page: any, projectNames?: Map<string, string>): QuestTask {
   const taskType = getSelect(page, 'Task Type')
   const priority = getSelect(page, 'Priority ')
   const timeConsuming = getNumber(page, 'Time Consuming')
   const dueDate = getDate(page, 'Due Date')
+  const projectIds = getRelationIds(page, 'Projects')
+  const projectName = projectIds.length > 0 && projectNames
+    ? (projectNames.get(projectIds[0]) ?? '')
+    : ''
   return {
     id: page.id,
     title: getTitle(page, 'Task Name', 'Name'),
@@ -91,6 +100,7 @@ function mapSonderTask(page: any): QuestTask {
     source: 'sonder',
     notionUrl: page.url,
     daysOverdue: calcDaysOverdue(dueDate),
+    projectName,
   }
 }
 
@@ -113,7 +123,32 @@ function mapPbTask(page: any): QuestTask {
     source: 'personal',
     notionUrl: page.url,
     daysOverdue: calcDaysOverdue(dueDate),
+    projectName: '',
   }
+}
+
+// ── Fetch project names in batch ──────────────────────────────────────────
+async function fetchProjectNames(pages: any[]): Promise<Map<string, string>> {
+  const projectIds = new Set<string>()
+  for (const page of pages) {
+    for (const rel of (getProp(page, 'Projects')?.relation ?? [])) {
+      projectIds.add(rel.id)
+    }
+  }
+  if (projectIds.size === 0) return new Map()
+
+  const names = new Map<string, string>()
+  await Promise.all(
+    Array.from(projectIds).map(async (id) => {
+      try {
+        const page = await notion.pages.retrieve({ page_id: id })
+        const titleProp = Object.values((page as any).properties).find((p: any) => p.type === 'title') as any
+        const name = titleProp?.title?.[0]?.plain_text ?? ''
+        names.set(id, name)
+      } catch { names.set(id, '') }
+    })
+  )
+  return names
 }
 
 // ── Queries ────────────────────────────────────────────────────────────────
@@ -145,11 +180,14 @@ export async function getTodaysTasks(): Promise<QuestTask[]> {
       page_size: 20,
     }),
   ])
+
+  // Batch fetch project names for sonder tasks
+  const projectNames = await fetchProjectNames(sonderRes.results)
+
   const tasks = [
-    ...sonderRes.results.map(mapSonderTask),
+    ...sonderRes.results.map(p => mapSonderTask(p, projectNames)),
     ...pbRes.results.map(mapPbTask),
   ]
-  // Sort: overdue first, then by priority
   return tasks.sort((a, b) => b.daysOverdue - a.daysOverdue)
 }
 
@@ -167,8 +205,11 @@ export async function getAllTasks(): Promise<QuestTask[]> {
       page_size: 30,
     }),
   ])
+
+  const projectNames = await fetchProjectNames(sonderRes.results)
+
   const tasks = [
-    ...sonderRes.results.map(mapSonderTask),
+    ...sonderRes.results.map(p => mapSonderTask(p, projectNames)),
     ...pbRes.results.map(mapPbTask),
   ]
   return tasks.sort((a, b) => b.daysOverdue - a.daysOverdue)
@@ -200,7 +241,7 @@ export async function getRecentlyCompletedTasks(): Promise<QuestTask[]> {
     }).catch(() => ({ results: [] })),
   ])
   return [
-    ...sonderRes.results.map(mapSonderTask),
+    ...sonderRes.results.map(p => mapSonderTask(p)),
     ...pbRes.results.map(mapPbTask),
   ]
 }
@@ -215,7 +256,7 @@ export async function getSubtasks(parentId: string): Promise<QuestTask[]> {
     },
     page_size: 20,
   })
-  return res.results.map(mapSonderTask)
+  return res.results.map(p => mapSonderTask(p))
 }
 
 // ── Mark done ─────────────────────────────────────────────────────────────

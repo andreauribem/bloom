@@ -22,6 +22,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const [completing, setCompleting] = useState<string | null>(null)
   const [breaking, setBreaking] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'sonder' | 'personal'>('all')
+  const [groupBy, setGroupBy] = useState<'source' | 'project' | 'priority' | 'type'>('source')
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [subtasksMap, setSubtasksMap] = useState<Record<string, QuestTask[]>>({})
   const [loadingSubtasks, setLoadingSubtasks] = useState<string | null>(null)
@@ -41,41 +42,48 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const popCeleb = () => setCelebQueue(q => q.slice(1))
   const current = celebQueue[0] ?? null
 
-  // ── Fetch tasks (no state dependency to avoid loops) ──
+  const hasSynced = useRef(false)
+
+  // ── Fetch tasks — sync only on first load for speed ──
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const [tasksRes, syncRes] = await Promise.all([
-        fetch(`/api/notion/tasks?view=${view}`),
-        fetch('/api/notion/sync'),
-      ])
-      const tasksData = await tasksRes.json()
-      const syncData = await syncRes.json()
+      // Only sync on first load, skip on subsequent fetches/polls
+      const shouldSync = !hasSynced.current
+      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${view}`)]
+      if (shouldSync) fetches.push(fetch('/api/notion/sync'))
+
+      const responses = await Promise.all(fetches)
+      const tasksData = await responses[0].json()
       const currentState = stateRef.current
 
       setTasks(tasksData.tasks ?? [])
 
-      // Sync: detect tasks completed in Notion
-      const completedInNotion = (syncData.tasks ?? []) as QuestTask[]
-      const newlyCompleted = completedInNotion.filter(
-        t => !currentState.completedTaskIds.includes(t.id)
-      )
-
       let updatedState = currentState
 
-      if (newlyCompleted.length > 0) {
-        let totalStarsEarned = 0
-        for (const task of newlyCompleted) {
-          const result = earnStars(
-            { ...updatedState, completedTaskIds: [...updatedState.completedTaskIds, task.id] },
-            task.stars,
-            task.priority === 'High 🚨'
-          )
-          updatedState = result.state
-          totalStarsEarned += result.starsEarned
+      // Sync: detect tasks completed in Notion (first load only)
+      if (shouldSync && responses[1]) {
+        hasSynced.current = true
+        const syncData = await responses[1].json()
+        const completedInNotion = (syncData.tasks ?? []) as QuestTask[]
+        const newlyCompleted = completedInNotion.filter(
+          t => !currentState.completedTaskIds.includes(t.id)
+        )
+
+        if (newlyCompleted.length > 0) {
+          let totalStarsEarned = 0
+          for (const task of newlyCompleted) {
+            const result = earnStars(
+              { ...updatedState, completedTaskIds: [...updatedState.completedTaskIds, task.id] },
+              task.stars,
+              task.priority === 'High 🚨'
+            )
+            updatedState = result.state
+            totalStarsEarned += result.starsEarned
+          }
+          setSyncToast({ count: newlyCompleted.length, stars: totalStarsEarned })
+          setTimeout(() => setSyncToast(null), 3500)
         }
-        setSyncToast({ count: newlyCompleted.length, stars: totalStarsEarned })
-        setTimeout(() => setSyncToast(null), 3500)
       }
 
       // Overdue penalty
@@ -83,16 +91,14 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       const overdueCount = activeTasks.filter((t: QuestTask) => t.daysOverdue > 0).length
       updatedState = applyOverduePenalty(updatedState, overdueCount)
 
-      // Only save if something changed
       if (updatedState !== currentState) {
         saveState(updatedState)
         onStateChangeRef.current(updatedState)
       }
     } catch (e) { console.error(e) }
     finally { if (!silent) setLoading(false) }
-  }, [view]) // Only depends on view, not state
+  }, [view])
 
-  // Initial load + polling
   useEffect(() => {
     fetchTasks()
     const interval = setInterval(() => fetchTasks(true), 60_000)
@@ -106,10 +112,65 @@ export default function QuestBoard({ state, onStateChange }: Props) {
     .filter(t => filter === 'all' ? true : filter === 'sonder' ? t.source === 'sonder' : t.source === 'personal')
     .filter(t => !state.completedTaskIds.includes(t.id))
 
-  // Separate overdue, today, and rest
   const overdueTasks = filteredBySource.filter(t => t.daysOverdue > 0)
-  const todayTasks = filteredBySource.filter(t => t.daysOverdue === 0)
+  const nonOverdueTasks = filteredBySource.filter(t => t.daysOverdue === 0)
   const visibleTasks = filteredBySource
+
+  // Get unique projects for display
+  const allProjects = [...new Set(filteredBySource.map(t => t.projectName).filter(Boolean))]
+
+  // Group tasks by selected criteria
+  function groupTasks(taskList: QuestTask[]): { label: string; emoji: string; tasks: QuestTask[] }[] {
+    switch (groupBy) {
+      case 'project': {
+        const groups = new Map<string, QuestTask[]>()
+        for (const t of taskList) {
+          const key = t.projectName || 'No project'
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key)!.push(t)
+        }
+        return Array.from(groups.entries()).map(([label, tasks]) => ({
+          label, emoji: label === 'No project' ? '📌' : '📁', tasks,
+        }))
+      }
+      case 'priority': {
+        const order = ['High 🚨', 'Medium', 'Low', '']
+        const groups = new Map<string, QuestTask[]>()
+        for (const t of taskList) {
+          const key = t.priority || 'No priority'
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key)!.push(t)
+        }
+        return order
+          .map(p => p || 'No priority')
+          .filter(p => groups.has(p))
+          .map(label => ({
+            label, emoji: label.includes('High') ? '🚨' : label.includes('Medium') ? '🟡' : label.includes('Low') ? '🔵' : '⚪', tasks: groups.get(label)!,
+          }))
+      }
+      case 'type': {
+        const groups = new Map<string, QuestTask[]>()
+        for (const t of taskList) {
+          const key = t.taskType || 'Other'
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key)!.push(t)
+        }
+        return Array.from(groups.entries()).map(([label, tasks]) => ({
+          label: label.split(' ').slice(0, -1).join(' ') || label,
+          emoji: label.includes('🧠') ? '🧠' : label.includes('🏗') ? '🏗️' : label.includes('⚙') ? '⚙️' : label.includes('📊') ? '📊' : '⚔️',
+          tasks,
+        }))
+      }
+      default: { // source
+        const sonder = taskList.filter(t => t.source === 'sonder')
+        const pb = taskList.filter(t => t.source === 'personal')
+        const groups: { label: string; emoji: string; tasks: QuestTask[] }[] = []
+        if (sonder.length > 0) groups.push({ label: 'Sonder', emoji: '🏢', tasks: sonder })
+        if (pb.length > 0) groups.push({ label: 'Personal Brand', emoji: '👑', tasks: pb })
+        return groups
+      }
+    }
+  }
 
   // ── Toggle subtasks ──
   async function toggleSubtasks(taskId: string) {
@@ -255,15 +316,6 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const timeSinceCombo = Date.now() - state.lastComboTime
   const comboActive = timeSinceCombo < 5 * 60 * 1000 && state.comboCount >= 2
 
-  // Group tasks for display
-  const sonderOverdue = overdueTasks.filter(t => t.source === 'sonder')
-  const pbOverdue = overdueTasks.filter(t => t.source === 'personal')
-  const sonderToday = todayTasks.filter(t => t.source === 'sonder')
-  const pbToday = todayTasks.filter(t => t.source === 'personal')
-
-  const showSonder = filter !== 'personal'
-  const showPb = filter !== 'sonder'
-
   return (
     <div className="flex-1 flex flex-col gap-4 min-w-0">
 
@@ -327,6 +379,22 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         </div>
       </div>
 
+      {/* Group by selector */}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        <span className="text-xs text-gray-400 font-bold shrink-0 py-1">Group:</span>
+        {([
+          { id: 'source', label: '📂 Source' },
+          { id: 'project', label: '📁 Project' },
+          { id: 'priority', label: '🎯 Priority' },
+          { id: 'type', label: '🏷️ Type' },
+        ] as { id: typeof groupBy; label: string }[]).map(g => (
+          <button key={g.id} onClick={() => setGroupBy(g.id)}
+            className={`px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${groupBy === g.id ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 border border-gray-100'}`}>
+            {g.label}
+          </button>
+        ))}
+      </div>
+
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white rounded-2xl p-3 shadow-card">
@@ -370,44 +438,33 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       {/* Task lists */}
       {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState /> : (
         <div className="flex flex-col gap-5">
-          {/* ── OVERDUE SECTION ── */}
+          {/* ── OVERDUE SECTION (always on top) ── */}
           {overdueTasks.length > 0 && (
             <div>
               <h2 className="text-sm font-black text-red-500 mb-2 ml-1 flex items-center gap-1">
                 ⏰ Overdue <span className="bg-red-100 text-red-600 rounded-full px-2 py-0.5 text-xs">{overdueTasks.length}</span>
               </h2>
               <div className="flex flex-col gap-2">
-                {showSonder && sonderOverdue.map(t => (
-                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
-                ))}
-                {showPb && pbOverdue.map(t => (
+                {overdueTasks.map(t => (
                   <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* ── TODAY / ALL TASKS ── */}
-          {showSonder && sonderToday.length > 0 && (
-            <div>
-              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">🏢 Sonder</h2>
+          {/* ── GROUPED TASKS ── */}
+          {groupTasks(nonOverdueTasks).map(group => (
+            <div key={group.label}>
+              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">
+                {group.emoji} {group.label} <span className="text-gray-400 font-normal">({group.tasks.length})</span>
+              </h2>
               <div className="flex flex-col gap-2">
-                {sonderToday.map(t => (
+                {group.tasks.map(t => (
                   <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
                 ))}
               </div>
             </div>
-          )}
-          {showPb && pbToday.length > 0 && (
-            <div>
-              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">👑 Personal Brand</h2>
-              <div className="flex flex-col gap-2">
-                {pbToday.map(t => (
-                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
-                ))}
-              </div>
-            </div>
-          )}
+          ))}
         </div>
       )}
     </div>
