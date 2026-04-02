@@ -163,6 +163,7 @@ export async function getTodaysTasks(): Promise<QuestTask[]> {
           { or: [
             { property: 'Do Date', date: { equals: today } },
             { property: 'Sprint Status ', select: { equals: 'Current' } },
+            { property: 'Due Date', date: { before: today } },
           ]},
         ],
       },
@@ -174,7 +175,10 @@ export async function getTodaysTasks(): Promise<QuestTask[]> {
       filter: {
         and: [
           { property: 'Status', status: { does_not_equal: 'Done' } },
-          { property: 'Sprint Status', select: { equals: 'Current' } },
+          { or: [
+            { property: 'Sprint Status', select: { equals: 'Current' } },
+            { property: 'Due Date', date: { before: today } },
+          ]},
         ],
       },
       page_size: 20,
