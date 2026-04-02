@@ -18,7 +18,10 @@ type Props = {
 export default function QuestBoard({ state, onStateChange }: Props) {
   const [tasks, setTasks] = useState<QuestTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'today' | 'all'>('today')
+  const [view, setView] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [showDatePicker, setShowDatePicker] = useState(false)
   const [completing, setCompleting] = useState<string | null>(null)
   const [breaking, setBreaking] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'sonder' | 'personal'>('all')
@@ -50,7 +53,8 @@ export default function QuestBoard({ state, onStateChange }: Props) {
     try {
       // Only sync on first load, skip on subsequent fetches/polls
       const shouldSync = !hasSynced.current
-      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${view}`)]
+      // Always fetch all tasks, filter client-side by date
+      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${view === 'today' ? 'today' : 'all'}`)]
       if (shouldSync) fetches.push(fetch('/api/notion/sync'))
 
       const responses = await Promise.all(fetches)
@@ -105,19 +109,47 @@ export default function QuestBoard({ state, onStateChange }: Props) {
     return () => clearInterval(interval)
   }, [fetchTasks])
 
-  // ── Visible tasks with better filtering ──
+  // ── Visible tasks with date + source filtering ──
   const today = new Date().toISOString().split('T')[0]
+
+  function getDateRange(): { from: string; to: string } | null {
+    if (view === 'today') return null // server already filters
+    if (view === 'week') {
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      startOfWeek.setDate(now.getDate() - now.getDay())
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(startOfWeek.getDate() + 6)
+      return { from: startOfWeek.toISOString().split('T')[0], to: endOfWeek.toISOString().split('T')[0] }
+    }
+    if (view === 'month') {
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      return { from: startOfMonth.toISOString().split('T')[0], to: endOfMonth.toISOString().split('T')[0] }
+    }
+    if (dateFrom || dateTo) {
+      return { from: dateFrom || '2000-01-01', to: dateTo || '2099-12-31' }
+    }
+    return null // 'all' — show everything
+  }
+
+  function isInDateRange(task: QuestTask): boolean {
+    const range = getDateRange()
+    if (!range) return true
+    const taskDate = task.doDate || task.dueDate
+    if (!taskDate) return true // tasks without dates always show
+    return taskDate >= range.from && taskDate <= range.to
+  }
 
   const filteredBySource = tasks
     .filter(t => filter === 'all' ? true : filter === 'sonder' ? t.source === 'sonder' : t.source === 'personal')
     .filter(t => !state.completedTaskIds.includes(t.id))
+    .filter(isInDateRange)
 
   const overdueTasks = filteredBySource.filter(t => t.daysOverdue > 0)
   const nonOverdueTasks = filteredBySource.filter(t => t.daysOverdue === 0)
   const visibleTasks = filteredBySource
-
-  // Get unique projects for display
-  const allProjects = [...new Set(filteredBySource.map(t => t.projectName).filter(Boolean))]
 
   // Group tasks by selected criteria
   function groupTasks(taskList: QuestTask[]): { label: string; emoji: string; tasks: QuestTask[] }[] {
@@ -357,18 +389,27 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         </div>
         <div className="flex gap-2 flex-wrap">
           <div className="flex bg-white rounded-2xl p-1 shadow-soft border border-petal-100">
-            {(['today', 'all'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${view === v ? 'bg-petal-500 text-white' : 'text-gray-500 hover:text-petal-500'}`}>
-                {v === 'today' ? '⚡ Today' : '📋 All'}
+            {([
+              { id: 'today', label: '⚡ Today' },
+              { id: 'week', label: '📅 Week' },
+              { id: 'month', label: '📆 Month' },
+              { id: 'all', label: '📋 All' },
+            ] as { id: typeof view; label: string }[]).map(v => (
+              <button key={v.id} onClick={() => { setView(v.id); setShowDatePicker(false) }}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${view === v.id && !showDatePicker ? 'bg-petal-500 text-white' : 'text-gray-500 hover:text-petal-500'}`}>
+                {v.label}
               </button>
             ))}
+            <button onClick={() => setShowDatePicker(!showDatePicker)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${showDatePicker ? 'bg-petal-500 text-white' : 'text-gray-500'}`}>
+              🔍
+            </button>
           </div>
           <div className="flex bg-white rounded-2xl p-1 shadow-soft border border-lavender-100">
             {(['all', 'sonder', 'personal'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filter === f ? 'bg-lavender-400 text-white' : 'text-gray-500'}`}>
-                {f === 'all' ? '✨ All' : f === 'sonder' ? '🏢' : '👑'}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${filter === f ? 'bg-lavender-400 text-white' : 'text-gray-500'}`}>
+                {f === 'all' ? '✨' : f === 'sonder' ? '🏢' : '👑'}
               </button>
             ))}
           </div>
@@ -378,6 +419,29 @@ export default function QuestBoard({ state, onStateChange }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Date range picker */}
+      <AnimatePresence>
+        {showDatePicker && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-white rounded-2xl p-3 shadow-card flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-gray-500">From</span>
+              <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setView('all') }}
+                className="border border-gray-200 rounded-xl px-2 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:border-petal-300" />
+              <span className="text-xs font-bold text-gray-500">To</span>
+              <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setView('all') }}
+                className="border border-gray-200 rounded-xl px-2 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:border-petal-300" />
+              {(dateFrom || dateTo) && (
+                <button onClick={() => { setDateFrom(''); setDateTo('') }}
+                  className="text-xs text-red-400 font-bold hover:text-red-500">Clear</button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Group by selector */}
       <div className="flex gap-1 overflow-x-auto pb-1">
