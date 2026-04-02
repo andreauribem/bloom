@@ -60,6 +60,11 @@ export type GameState = {
   achievements: Achievement[]
   petMood: 'happy' | 'excited' | 'neutral' | 'tired' | 'hungry'
   totalTasksCompleted: number
+  // Overdue
+  lastOverduePenaltyDate: string  // ISO date, to avoid penalizing twice same day
+  overdueCount: number            // cached count for pet phrases
+  // Time tracking
+  activeTimer: { timeTrackerId: string; taskId: string; taskTitle: string; startedAt: number } | null
   // Future phases
   gameTokens: number
   miniGamesPlayed: number
@@ -246,6 +251,13 @@ function deriveMood(state: GameState): GameState['petMood'] {
 
 // ── Pet mood phrases based on lowest need ─────────────────────────────────
 export function getPetPhrase(state: GameState): string {
+  // Overdue tasks take priority in phrases
+  const overdue = state.overdueCount ?? 0
+  if (overdue > 0) {
+    if (overdue >= 3) return `~${overdue} overdue tasks... I'm worried~`
+    return `~you have ${overdue} overdue task${overdue > 1 ? 's' : ''}... let's fix that~`
+  }
+
   const h = Number.isFinite(state.hunger) ? state.hunger : 80
   const ha = Number.isFinite(state.happiness) ? state.happiness : 70
   const e = Number.isFinite(state.energy) ? state.energy : 70
@@ -254,7 +266,6 @@ export function getPetPhrase(state: GameState): string {
   if (state.petMood === 'excited') return '~so proud of you!~'
   if (state.petMood === 'happy') return '~keep going!~'
 
-  // Find which need is lowest for specific phrases
   const lowest = Math.min(h, ha, e, c)
   if (lowest < 20) {
     if (h === lowest) return '~I\'m so hungry... complete a task!~'
@@ -269,6 +280,19 @@ export function getPetPhrase(state: GameState): string {
     if (c === lowest) return '~keep showing up daily for me~'
   }
   return '~let\'s do this!~'
+}
+
+// ── Overdue penalty ───────────────────────────────────────────────────────
+export function applyOverduePenalty(state: GameState, overdueCount: number): GameState {
+  const today = new Date().toISOString().split('T')[0]
+  if (overdueCount === 0) return { ...state, overdueCount: 0 }
+  if (state.lastOverduePenaltyDate === today) return { ...state, overdueCount }
+
+  // -3 hunger per overdue task, applied once per day
+  const penalty = overdueCount * 3
+  const hunger = Math.max(0, (state.hunger ?? 80) - penalty)
+  const next = { ...state, hunger, overdueCount, lastOverduePenaltyDate: today }
+  return { ...next, petMood: deriveMood(next) }
 }
 
 // ── Combo ──────────────────────────────────────────────────────────────────
@@ -340,6 +364,9 @@ function defaultState(): GameState {
     achievements: ALL_ACHIEVEMENTS.map(a => ({ ...a, unlockedAt: null })),
     petMood: 'neutral',
     totalTasksCompleted: 0,
+    lastOverduePenaltyDate: '',
+    overdueCount: 0,
+    activeTimer: null,
     gameTokens: 0,
     miniGamesPlayed: 0,
     ownedAccessories: [],
