@@ -9,6 +9,8 @@ import {
 } from './CelebrationModals'
 import { Achievement } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel } from '@/lib/petEvolution'
+import { hapticMedium, hapticSuccess, hapticHeavy, soundCoin, soundComplete, soundLevelUp, soundCombo, soundEvolution, soundAchievement } from '@/lib/feedback'
+import DailyChallenges from './DailyChallenges'
 
 type Props = {
   state: GameState
@@ -271,12 +273,19 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       saveState(finalState)
       onStateChange(finalState)
 
+      // Sound + haptic feedback
+      soundComplete()
+      hapticMedium()
+
       // Queue celebrations
       const comboLbl = getComboLabel(result.state.comboCount)
       if (comboLbl && result.comboMultiplier > 1) {
+        soundCombo()
         pushCeleb({ type: 'combo', label: comboLbl, starsEarned: result.starsEarned })
       }
       if (result.evolved) {
+        soundEvolution()
+        hapticHeavy()
         const newStage = getStageForLevel(result.newLevel)
         pushCeleb({
           type: 'evolution',
@@ -286,9 +295,12 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         })
       }
       if (result.leveledUp) {
+        soundLevelUp()
+        hapticSuccess()
         pushCeleb({ type: 'levelup', level: result.newLevel })
       }
       result.newAchievements.forEach(a => {
+        soundAchievement()
         pushCeleb({ type: 'achievement', achievement: a })
       })
     } catch (e) { console.error(e) }
@@ -498,6 +510,9 @@ export default function QuestBoard({ state, onStateChange }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Daily Challenges */}
+      <DailyChallenges state={state} onStateChange={onStateChange} />
 
       {/* Task lists */}
       {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState /> : (

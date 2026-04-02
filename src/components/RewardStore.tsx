@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GameState, Reward, spendStars, saveState, boostHappiness } from '@/lib/gameStore'
+import { hapticSuccess, soundCoin } from '@/lib/feedback'
+import AccessoryShop from './AccessoryShop'
 
 type Props = {
   state: GameState
@@ -16,6 +18,8 @@ export default function RewardStore({ state, onStateChange }: Props) {
 
   function redeem(reward: Reward) {
     if (state.stars < reward.cost) return
+    hapticSuccess()
+    soundCoin()
     setCelebrating(reward.id)
     // Redeeming rewards boosts happiness — treating yourself = happy pet 💕
     const spent = spendStars(state, reward.cost)
@@ -178,6 +182,9 @@ export default function RewardStore({ state, onStateChange }: Props) {
           ))}
         </div>
       )}
+
+      {/* Accessory Shop */}
+      <AccessoryShop state={state} onStateChange={onStateChange} />
 
       {/* Add reward modal */}
       <AnimatePresence>

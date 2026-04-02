@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
+import { getAccessory } from '@/lib/accessories'
 
 type Props = {
   state: GameState
@@ -92,10 +93,36 @@ export default function PetSidebar({ state, onStateChange }: Props) {
           </span>
         </div>
 
-        {/* Pet sprite with mood animation */}
+        {/* Pet sprite with accessories */}
         <div className="relative mt-2">
-          {/* Legendary aura */}
-          {isLegendary && (
+          {/* Background accessory */}
+          {state.equippedBackground && (() => {
+            const bg = getAccessory(state.equippedBackground!)
+            return bg ? (
+              <>
+                <motion.span className="absolute -top-2 -left-4 text-lg opacity-30" animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 3 }}>{bg.emoji}</motion.span>
+                <motion.span className="absolute -bottom-1 -right-3 text-lg opacity-30" animate={{ y: [0, 3, 0] }} transition={{ repeat: Infinity, duration: 4 }}>{bg.emoji}</motion.span>
+                <motion.span className="absolute top-1/2 -left-5 text-sm opacity-20" animate={{ y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 3.5 }}>{bg.emoji}</motion.span>
+              </>
+            ) : null
+          })()}
+
+          {/* Hat accessory */}
+          {state.equippedHat && (() => {
+            const hat = getAccessory(state.equippedHat!)
+            return hat ? (
+              <motion.div
+                className="absolute -top-5 left-1/2 -translate-x-1/2 text-2xl z-10"
+                animate={{ y: [0, -2, 0] }}
+                transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 2 }}
+              >
+                {hat.emoji}
+              </motion.div>
+            ) : null
+          })()}
+
+          {/* Legendary aura (only if no hat) */}
+          {isLegendary && !state.equippedHat && (
             <motion.div
               className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl"
               animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
@@ -112,6 +139,25 @@ export default function PetSidebar({ state, onStateChange }: Props) {
           >
             {petEmoji}
           </motion.div>
+
+          {/* Effect accessory */}
+          {state.equippedEffect && (() => {
+            const fx = getAccessory(state.equippedEffect!)
+            return fx ? (
+              <>
+                <motion.span
+                  className="absolute -right-3 top-0 text-base"
+                  animate={{ rotate: [0, 360], opacity: [0.6, 1, 0.6] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
+                >{fx.emoji}</motion.span>
+                <motion.span
+                  className="absolute -left-3 bottom-2 text-base"
+                  animate={{ rotate: [360, 0], opacity: [0.6, 1, 0.6] }}
+                  transition={{ repeat: Infinity, duration: 4, ease: 'linear' }}
+                >{fx.emoji}</motion.span>
+              </>
+            ) : null
+          })()}
 
           {/* Reaction bubble */}
           <AnimatePresence>

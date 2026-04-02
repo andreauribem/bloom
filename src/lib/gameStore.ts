@@ -63,6 +63,11 @@ export type GameState = {
   // Overdue
   lastOverduePenaltyDate: string  // ISO date, to avoid penalizing twice same day
   overdueCount: number            // cached count for pet phrases
+  // Daily challenges
+  claimedChallenges: string[]  // challenge IDs claimed today
+  bossesDefeatedToday: number
+  tasksCompletedToday: number
+  todayTasksDate: string       // reset counter on new day
   // Time tracking
   activeTimer: { timeTrackerId: string; taskId: string; taskTitle: string; startedAt: number } | null
   // Future phases
@@ -366,6 +371,10 @@ function defaultState(): GameState {
     totalTasksCompleted: 0,
     lastOverduePenaltyDate: '',
     overdueCount: 0,
+    claimedChallenges: [],
+    bossesDefeatedToday: 0,
+    tasksCompletedToday: 0,
+    todayTasksDate: today,
     activeTimer: null,
     gameTokens: 0,
     miniGamesPlayed: 0,
@@ -477,6 +486,11 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
     completedTaskIds: state.completedTaskIds,
     petStage: newStage,
     gameTokens,
+    // Daily challenge counters
+    tasksCompletedToday: (state.todayTasksDate === today ? (state.tasksCompletedToday ?? 0) : 0) + 1,
+    bossesDefeatedToday: (state.todayTasksDate === today ? (state.bossesDefeatedToday ?? 0) : 0) + (isBoss ? 1 : 0),
+    todayTasksDate: today,
+    claimedChallenges: state.todayTasksDate === today ? (state.claimedChallenges ?? []) : [],
   }
   next.petMood = deriveMood(next)
 
@@ -523,4 +537,29 @@ export function updateCleanliness(state: GameState): GameState {
 export function getTodayCheck(state: GameState): DailyCheck | null {
   const today = new Date().toISOString().split('T')[0]
   return state.dailyChecks.find(c => c.date === today) ?? null
+}
+
+// ── Accessories ───────────────────────────────────────────────────────────
+export function buyAccessory(state: GameState, accessoryId: string, cost: number): GameState {
+  return {
+    ...state,
+    stars: Math.max(0, state.stars - cost),
+    ownedAccessories: [...(state.ownedAccessories ?? []), accessoryId],
+  }
+}
+
+export function equipAccessory(state: GameState, slot: 'equippedHat' | 'equippedBackground' | 'equippedEffect', accessoryId: string | null): GameState {
+  return { ...state, [slot]: accessoryId }
+}
+
+// ── Claim daily challenge ─────────────────────────────────────────────────
+export function claimChallenge(state: GameState, challengeId: string, xpReward: number, starReward: number): GameState {
+  const today = new Date().toISOString().split('T')[0]
+  const claimed = state.todayTasksDate === today ? [...(state.claimedChallenges ?? []), challengeId] : [challengeId]
+  return {
+    ...state,
+    stars: state.stars + starReward,
+    xp: state.xp + xpReward,
+    claimedChallenges: claimed,
+  }
 }
