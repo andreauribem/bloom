@@ -8,8 +8,9 @@ import MobileHeader from '@/components/MobileHeader'
 import QuestBoard from '@/components/QuestBoard'
 import RewardStore from '@/components/RewardStore'
 import PetSidebar from '@/components/PetSidebar'
+import ContentGoals from '@/components/ContentGoals'
 
-type Tab = 'quests' | 'rewards' | 'pet'
+type Tab = 'quests' | 'goals' | 'rewards' | 'pet'
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null)
@@ -81,7 +82,10 @@ export default function Home() {
         </header>
         <main className="max-w-6xl mx-auto w-full p-6 flex gap-5 items-start">
           <PetSidebar state={state} onStateChange={setState} />
-          <QuestBoard state={state} onStateChange={setState} />
+          <div className="flex-1 flex flex-col gap-5 min-w-0">
+            <QuestBoard state={state} onStateChange={setState} />
+            <ContentGoals state={state} onStateChange={setState} />
+          </div>
           <RewardStore state={state} onStateChange={setState} />
         </main>
       </div>
@@ -96,6 +100,11 @@ export default function Home() {
           {tab === 'quests' && (
             <div className="p-4">
               <QuestBoard state={state} onStateChange={setState} />
+            </div>
+          )}
+          {tab === 'goals' && (
+            <div className="p-4">
+              <ContentGoals state={state} onStateChange={setState} />
             </div>
           )}
           {tab === 'rewards' && (
@@ -115,6 +124,7 @@ export default function Home() {
           <div className="flex">
             {([
               { id: 'quests',  label: 'Quests',  emoji: '⚔️' },
+              { id: 'goals',   label: 'Goals',   emoji: '📊' },
               { id: 'rewards', label: 'Rewards', emoji: '🏪' },
               { id: 'pet',     label: 'Pet',     emoji: petEmoji },
             ] as { id: Tab; label: string; emoji: string }[]).map(t => (
