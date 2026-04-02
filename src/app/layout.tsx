@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: 'Bloom 🌸',
   description: 'Your cozy lil biz adventure',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

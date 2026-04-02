@@ -235,16 +235,26 @@ export async function createTimeEntry(taskId: string, taskTitle: string, source:
   const relationKey = source === 'sonder' ? 'Sonder' : 'Personal Brand (USA)'
   const brandValue = source === 'sonder' ? '🟡 Sonder' : '🔵 Personal Brand USA'
 
-  const page = await notion.pages.create({
-    parent: { database_id: DB.timeTracker },
-    properties: {
-      Name: { title: [{ text: { content: taskTitle } }] },
-      Start: { date: { start: now } },
-      Status: { status: { name: 'In progress' } },
-      [relationKey]: { relation: [{ id: taskId }] },
-      Brand: { multi_select: [{ name: brandValue }] },
-    },
-  })
+  // Create time entry AND set task status to "In progress"
+  const [page] = await Promise.all([
+    notion.pages.create({
+      parent: { database_id: DB.timeTracker },
+      properties: {
+        Name: { title: [{ text: { content: taskTitle } }] },
+        Start: { date: { start: now } },
+        Status: { status: { name: 'In progress' } },
+        [relationKey]: { relation: [{ id: taskId }] },
+        Brand: { multi_select: [{ name: brandValue }] },
+      },
+    }),
+    // Update task status to "In progress"
+    notion.pages.update({
+      page_id: taskId,
+      properties: {
+        Status: { status: { name: 'In progress' } },
+      },
+    }),
+  ])
   return page.id
 }
 

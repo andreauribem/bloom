@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { QuestTask } from '@/lib/notion'
 import { GameState, earnStars, saveState, getComboLabel, getComboMultiplier, xpForLevel, formatTime, applyOverduePenalty } from '@/lib/gameStore'
@@ -27,6 +27,12 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const [loadingSubtasks, setLoadingSubtasks] = useState<string | null>(null)
   const [syncToast, setSyncToast] = useState<{ count: number; stars: number } | null>(null)
 
+  // Use refs to avoid dependency loops
+  const stateRef = useRef(state)
+  const onStateChangeRef = useRef(onStateChange)
+  stateRef.current = state
+  onStateChangeRef.current = onStateChange
+
   // Celebration queue
   const [celebQueue, setCelebQueue] = useState<CelebEvent[]>([])
   const [starBursts, setStarBursts] = useState<{ id: string; count: number; x: number; y: number }[]>([])
@@ -35,7 +41,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const popCeleb = () => setCelebQueue(q => q.slice(1))
   const current = celebQueue[0] ?? null
 
-  // ── Fetch tasks + sync Notion Done + overdue penalty ──
+  // ── Fetch tasks (no state dependency to avoid loops) ──
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
@@ -45,31 +51,29 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       ])
       const tasksData = await tasksRes.json()
       const syncData = await syncRes.json()
+      const currentState = stateRef.current
 
       setTasks(tasksData.tasks ?? [])
 
       // Sync: detect tasks completed in Notion
       const completedInNotion = (syncData.tasks ?? []) as QuestTask[]
       const newlyCompleted = completedInNotion.filter(
-        t => !state.completedTaskIds.includes(t.id)
+        t => !currentState.completedTaskIds.includes(t.id)
       )
 
-      if (newlyCompleted.length > 0) {
-        let currentState = { ...state }
-        let totalStarsEarned = 0
+      let updatedState = currentState
 
+      if (newlyCompleted.length > 0) {
+        let totalStarsEarned = 0
         for (const task of newlyCompleted) {
           const result = earnStars(
-            { ...currentState, completedTaskIds: [...currentState.completedTaskIds, task.id] },
+            { ...updatedState, completedTaskIds: [...updatedState.completedTaskIds, task.id] },
             task.stars,
             task.priority === 'High 🚨'
           )
-          currentState = result.state
+          updatedState = result.state
           totalStarsEarned += result.starsEarned
         }
-
-        saveState(currentState)
-        onStateChange(currentState)
         setSyncToast({ count: newlyCompleted.length, stars: totalStarsEarned })
         setTimeout(() => setSyncToast(null), 3500)
       }
@@ -77,31 +81,35 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       // Overdue penalty
       const activeTasks = tasksData.tasks ?? []
       const overdueCount = activeTasks.filter((t: QuestTask) => t.daysOverdue > 0).length
-      if (overdueCount > 0) {
-        const penalized = applyOverduePenalty(state, overdueCount)
-        if (penalized !== state) {
-          saveState(penalized)
-          onStateChange(penalized)
-        }
-      } else if ((state.overdueCount ?? 0) > 0) {
-        // Clear overdue count
-        const cleared = { ...state, overdueCount: 0 }
-        saveState(cleared)
-        onStateChange(cleared)
+      updatedState = applyOverduePenalty(updatedState, overdueCount)
+
+      // Only save if something changed
+      if (updatedState !== currentState) {
+        saveState(updatedState)
+        onStateChangeRef.current(updatedState)
       }
     } catch (e) { console.error(e) }
     finally { if (!silent) setLoading(false) }
-  }, [view, state, onStateChange])
+  }, [view]) // Only depends on view, not state
 
+  // Initial load + polling
   useEffect(() => {
     fetchTasks()
     const interval = setInterval(() => fetchTasks(true), 60_000)
     return () => clearInterval(interval)
   }, [fetchTasks])
 
-  const visibleTasks = tasks
+  // ── Visible tasks with better filtering ──
+  const today = new Date().toISOString().split('T')[0]
+
+  const filteredBySource = tasks
     .filter(t => filter === 'all' ? true : filter === 'sonder' ? t.source === 'sonder' : t.source === 'personal')
     .filter(t => !state.completedTaskIds.includes(t.id))
+
+  // Separate overdue, today, and rest
+  const overdueTasks = filteredBySource.filter(t => t.daysOverdue > 0)
+  const todayTasks = filteredBySource.filter(t => t.daysOverdue === 0)
+  const visibleTasks = filteredBySource
 
   // ── Toggle subtasks ──
   async function toggleSubtasks(taskId: string) {
@@ -139,27 +147,28 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         body: JSON.stringify({ taskId: task.id, source: task.source }),
       })
 
+      const currentState = stateRef.current
+
       // If timer was running for this task, stop it
-      if (state.activeTimer?.taskId === task.id) {
+      if (currentState.activeTimer?.taskId === task.id) {
         await fetch('/api/notion/timer', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'stop', entryId: state.activeTimer.timeTrackerId }),
+          body: JSON.stringify({ action: 'stop', entryId: currentState.activeTimer.timeTrackerId }),
         })
       }
 
       const result = earnStars(
-        { ...state, completedTaskIds: [...state.completedTaskIds, task.id], activeTimer: state.activeTimer?.taskId === task.id ? null : state.activeTimer },
+        { ...currentState, completedTaskIds: [...currentState.completedTaskIds, task.id], activeTimer: currentState.activeTimer?.taskId === task.id ? null : currentState.activeTimer },
         task.stars,
         isBoss
       )
 
-      // Time bonus: if timer was running and task completed within estimated time
+      // Time bonus
       let finalState = result.state
-      if (state.activeTimer?.taskId === task.id && task.timeConsuming) {
-        const elapsed = (Date.now() - state.activeTimer.startedAt) / (1000 * 60 * 60) // hours
+      if (currentState.activeTimer?.taskId === task.id && task.timeConsuming) {
+        const elapsed = (Date.now() - currentState.activeTimer.startedAt) / (1000 * 60 * 60)
         if (elapsed <= task.timeConsuming) {
-          // 50% bonus stars for finishing on time!
           const bonus = Math.round(result.starsEarned * 0.5)
           finalState = { ...finalState, stars: finalState.stars + bonus }
           pushCeleb({ type: 'combo', label: '⏱️ On time bonus!', starsEarned: bonus })
@@ -170,16 +179,16 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       onStateChange(finalState)
 
       // Queue celebrations
-      const comboLabel = getComboLabel(result.state.comboCount)
-      if (comboLabel && result.comboMultiplier > 1) {
-        pushCeleb({ type: 'combo', label: comboLabel, starsEarned: result.starsEarned })
+      const comboLbl = getComboLabel(result.state.comboCount)
+      if (comboLbl && result.comboMultiplier > 1) {
+        pushCeleb({ type: 'combo', label: comboLbl, starsEarned: result.starsEarned })
       }
       if (result.evolved) {
         const newStage = getStageForLevel(result.newLevel)
         pushCeleb({
           type: 'evolution',
-          petEmoji: getPetEmoji(state.petId, result.newLevel),
-          aura: getLegendaryAura(state.petId),
+          petEmoji: getPetEmoji(currentState.petId, result.newLevel),
+          aura: getLegendaryAura(currentState.petId),
           stageName: getStageLabel(newStage),
         })
       }
@@ -203,7 +212,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       })
       const data = await res.json()
       if (data.entryId) {
-        const next = { ...state, activeTimer: { timeTrackerId: data.entryId, taskId: task.id, taskTitle: task.title, startedAt: Date.now() } }
+        const next = { ...stateRef.current, activeTimer: { timeTrackerId: data.entryId, taskId: task.id, taskTitle: task.title, startedAt: Date.now() } }
         saveState(next)
         onStateChange(next)
       }
@@ -211,14 +220,15 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   }
 
   async function stopTimer() {
-    if (!state.activeTimer) return
+    const currentState = stateRef.current
+    if (!currentState.activeTimer) return
     try {
       await fetch('/api/notion/timer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'stop', entryId: state.activeTimer.timeTrackerId }),
+        body: JSON.stringify({ action: 'stop', entryId: currentState.activeTimer.timeTrackerId }),
       })
-      const next = { ...state, activeTimer: null }
+      const next = { ...currentState, activeTimer: null }
       saveState(next)
       onStateChange(next)
     } catch (e) { console.error(e) }
@@ -238,10 +248,6 @@ export default function QuestBoard({ state, onStateChange }: Props) {
     finally { setBreaking(null) }
   }
 
-  const sonderTasks = visibleTasks.filter(t => t.source === 'sonder')
-  const pbTasks = visibleTasks.filter(t => t.source === 'personal')
-
-  const today = new Date().toISOString().split('T')[0]
   const dailyXP = state.dailyXPDate === today ? state.dailyXP : 0
   const dailyProgress = Math.min(100, (dailyXP / state.dailyXPGoal) * 100)
   const xpPercent = Math.round((state.xp / xpForLevel(state.level)) * 100)
@@ -249,37 +255,35 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const timeSinceCombo = Date.now() - state.lastComboTime
   const comboActive = timeSinceCombo < 5 * 60 * 1000 && state.comboCount >= 2
 
+  // Group tasks for display
+  const sonderOverdue = overdueTasks.filter(t => t.source === 'sonder')
+  const pbOverdue = overdueTasks.filter(t => t.source === 'personal')
+  const sonderToday = todayTasks.filter(t => t.source === 'sonder')
+  const pbToday = todayTasks.filter(t => t.source === 'personal')
+
+  const showSonder = filter !== 'personal'
+  const showPb = filter !== 'sonder'
+
   return (
     <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-      {/* ── Celebration Modals ── */}
+      {/* Celebrations */}
       <AnimatePresence mode="wait">
-        {current?.type === 'levelup' && (
-          <LevelUpModal key="lvl" level={current.level} onClose={popCeleb} />
-        )}
-        {current?.type === 'achievement' && (
-          <AchievementToast key={current.achievement.id} achievement={current.achievement} onClose={popCeleb} />
-        )}
-        {current?.type === 'combo' && (
-          <ComboBanner key="combo" label={current.label} starsEarned={current.starsEarned} />
-        )}
-        {current?.type === 'evolution' && (
-          <EvolutionModal key="evo" petEmoji={current.petEmoji} aura={current.aura} stageName={current.stageName} onClose={popCeleb} />
-        )}
+        {current?.type === 'levelup' && <LevelUpModal key="lvl" level={current.level} onClose={popCeleb} />}
+        {current?.type === 'achievement' && <AchievementToast key={current.achievement.id} achievement={current.achievement} onClose={popCeleb} />}
+        {current?.type === 'combo' && <ComboBanner key="combo" label={current.label} starsEarned={current.starsEarned} />}
+        {current?.type === 'evolution' && <EvolutionModal key="evo" petEmoji={current.petEmoji} aura={current.aura} stageName={current.stageName} onClose={popCeleb} />}
       </AnimatePresence>
 
-      {/* Star bursts */}
       <AnimatePresence>
         {starBursts.map(b => <StarBurst key={b.id} count={b.count} x={b.x} y={b.y} />)}
       </AnimatePresence>
 
-      {/* ── Sync Toast ── */}
+      {/* Sync Toast */}
       <AnimatePresence>
         {syncToast && (
-          <motion.div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[80]"
-            initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }}
-          >
+          <motion.div className="fixed top-4 left-1/2 -translate-x-1/2 z-[80]"
+            initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }}>
             <div className="bg-green-600 text-white rounded-2xl px-5 py-3 shadow-2xl text-center">
               <p className="font-black text-sm">🔄 Synced from Notion!</p>
               <p className="text-xs opacity-80">{syncToast.count} task{syncToast.count > 1 ? 's' : ''} completed · +{syncToast.stars}⭐</p>
@@ -288,12 +292,10 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         )}
       </AnimatePresence>
 
-      {/* ── Active Timer Banner ── */}
-      {state.activeTimer && (
-        <ActiveTimerBanner timer={state.activeTimer} onStop={stopTimer} />
-      )}
+      {/* Active Timer Banner */}
+      {state.activeTimer && <ActiveTimerBanner timer={state.activeTimer} onStop={stopTimer} />}
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-gray-800">🗺️ Quest Board</h1>
@@ -325,7 +327,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         </div>
       </div>
 
-      {/* ── Stats row ── */}
+      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white rounded-2xl p-3 shadow-card">
           <div className="flex justify-between items-center mb-1">
@@ -333,14 +335,9 @@ export default function QuestBoard({ state, onStateChange }: Props) {
             <span className="text-xs font-black text-petal-500">{dailyXP}/{state.dailyXPGoal}</span>
           </div>
           <div className="w-full h-2 bg-petal-100 rounded-full overflow-hidden">
-            <motion.div className="h-full xp-bar rounded-full"
-              animate={{ width: `${dailyProgress}%` }}
-              transition={{ duration: 0.5 }}
-            />
+            <motion.div className="h-full xp-bar rounded-full" animate={{ width: `${dailyProgress}%` }} transition={{ duration: 0.5 }} />
           </div>
-          {dailyProgress >= 100 && (
-            <p className="text-xs text-green-500 font-bold mt-1">Goal reached! 🎉</p>
-          )}
+          {dailyProgress >= 100 && <p className="text-xs text-green-500 font-bold mt-1">Goal reached! 🎉</p>}
         </div>
         <div className="bg-white rounded-2xl p-3 shadow-card text-center">
           <p className="text-xs font-bold text-gray-500 mb-1">🔥 Streak</p>
@@ -353,58 +350,117 @@ export default function QuestBoard({ state, onStateChange }: Props) {
             <span className="text-xs text-gray-400">{xpPercent}%</span>
           </div>
           <div className="w-full h-2 bg-lavender-100 rounded-full overflow-hidden">
-            <motion.div className="h-full bg-lavender-400 rounded-full"
-              animate={{ width: `${xpPercent}%` }}
-              transition={{ duration: 0.5 }}
-            />
+            <motion.div className="h-full bg-lavender-400 rounded-full" animate={{ width: `${xpPercent}%` }} transition={{ duration: 0.5 }} />
           </div>
           <p className="text-xs text-gray-400 mt-1">{state.xp} / {xpForLevel(state.level)} XP</p>
         </div>
       </div>
 
-      {/* ── Combo indicator ── */}
+      {/* Combo indicator */}
       <AnimatePresence>
         {comboActive && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="bg-gradient-to-r from-petal-500 to-lavender-500 rounded-2xl px-4 py-2 flex items-center justify-between"
-          >
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+            className="bg-gradient-to-r from-petal-500 to-lavender-500 rounded-2xl px-4 py-2 flex items-center justify-between">
             <span className="text-white font-black text-sm">{comboLabel}</span>
             <span className="text-white/80 text-xs">combo active — keep it up!</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Task lists ── */}
+      {/* Task lists */}
       {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState /> : (
         <div className="flex flex-col gap-5">
-          {filter !== 'personal' && sonderTasks.length > 0 && (
-            <TaskGroup label="🏢 Sonder" tasks={sonderTasks}
-              completing={completing} breaking={breaking}
-              completedIds={state.completedTaskIds}
-              activeTimer={state.activeTimer}
-              expandedTasks={expandedTasks}
-              subtasksMap={subtasksMap}
-              loadingSubtasks={loadingSubtasks}
-              onComplete={completeTask} onBreakdown={breakdownTask}
-              onToggleSubtasks={toggleSubtasks}
-              onStartTimer={startTimer} onStopTimer={stopTimer} />
+          {/* ── OVERDUE SECTION ── */}
+          {overdueTasks.length > 0 && (
+            <div>
+              <h2 className="text-sm font-black text-red-500 mb-2 ml-1 flex items-center gap-1">
+                ⏰ Overdue <span className="bg-red-100 text-red-600 rounded-full px-2 py-0.5 text-xs">{overdueTasks.length}</span>
+              </h2>
+              <div className="flex flex-col gap-2">
+                {showSonder && sonderOverdue.map(t => (
+                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+                ))}
+                {showPb && pbOverdue.map(t => (
+                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+                ))}
+              </div>
+            </div>
           )}
-          {filter !== 'sonder' && pbTasks.length > 0 && (
-            <TaskGroup label="👑 Personal Brand" tasks={pbTasks}
-              completing={completing} breaking={breaking}
-              completedIds={state.completedTaskIds}
-              activeTimer={state.activeTimer}
-              expandedTasks={expandedTasks}
-              subtasksMap={subtasksMap}
-              loadingSubtasks={loadingSubtasks}
-              onComplete={completeTask} onBreakdown={breakdownTask}
-              onToggleSubtasks={toggleSubtasks}
-              onStartTimer={startTimer} onStopTimer={stopTimer} />
+
+          {/* ── TODAY / ALL TASKS ── */}
+          {showSonder && sonderToday.length > 0 && (
+            <div>
+              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">🏢 Sonder</h2>
+              <div className="flex flex-col gap-2">
+                {sonderToday.map(t => (
+                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {showPb && pbToday.length > 0 && (
+            <div>
+              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">👑 Personal Brand</h2>
+              <div className="flex flex-col gap-2">
+                {pbToday.map(t => (
+                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+                ))}
+              </div>
+            </div>
           )}
         </div>
+      )}
+    </div>
+  )
+
+  // Helper to build card props
+  function cardProps(t: QuestTask) {
+    return {
+      completing: completing === t.id,
+      breaking: breaking === t.id,
+      isTimerActive: state.activeTimer?.taskId === t.id,
+      hasAnyTimer: !!state.activeTimer,
+      onComplete: (e: React.MouseEvent) => completeTask(t, e),
+      onBreakdown: () => breakdownTask(t),
+      onStartTimer: () => startTimer(t),
+      onStopTimer: stopTimer,
+      expanded: expandedTasks.has(t.id),
+      onToggleSubtasks: () => toggleSubtasks(t.id),
+      subtasks: subtasksMap[t.id],
+      loadingSubtasks: loadingSubtasks === t.id,
+      completedIds: state.completedTaskIds,
+      completingId: completing,
+      onCompleteSubtask: completeTask,
+    }
+  }
+}
+
+// ── Task Card Wrapper (decides Boss vs Regular + subtasks) ─────────────────
+function TaskCardWrapper({ task, completing, breaking, isTimerActive, hasAnyTimer, onComplete, onBreakdown, onStartTimer, onStopTimer, expanded, onToggleSubtasks, subtasks, loadingSubtasks, completedIds, completingId, onCompleteSubtask }: {
+  task: QuestTask; completing: boolean; breaking: boolean
+  isTimerActive: boolean; hasAnyTimer: boolean
+  onComplete: (e: React.MouseEvent) => void; onBreakdown: () => void
+  onStartTimer: () => void; onStopTimer: () => void
+  expanded: boolean; onToggleSubtasks: () => void
+  subtasks?: QuestTask[]; loadingSubtasks: boolean
+  completedIds: string[]; completingId: string | null
+  onCompleteSubtask: (t: QuestTask, e: React.MouseEvent) => void
+}) {
+  const isBoss = task.priority === 'High 🚨'
+  const Card = isBoss ? BossCard : TaskCard
+
+  return (
+    <div>
+      <Card task={task} completing={completing} breaking={breaking}
+        isTimerActive={isTimerActive} hasAnyTimer={hasAnyTimer}
+        onComplete={onComplete} onBreakdown={onBreakdown}
+        onStartTimer={onStartTimer} onStopTimer={onStopTimer}
+        hasSubtasks={task.hasSubtasks} expanded={expanded}
+        onToggleSubtasks={onToggleSubtasks} />
+      {expanded && (
+        <SubtaskList subtasks={subtasks} loading={loadingSubtasks}
+          completedIds={completedIds} completing={completingId}
+          onComplete={onCompleteSubtask} />
       )}
     </div>
   )
@@ -428,16 +484,13 @@ function ActiveTimerBanner({ timer, onStop }: { timer: NonNullable<GameState['ac
   }, [timer.startedAt])
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl px-4 py-3 flex items-center justify-between"
-    >
-      <div>
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+      className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl px-4 py-3 flex items-center justify-between">
+      <div className="min-w-0">
         <p className="text-white text-xs font-bold opacity-80">⏱️ Timer active</p>
-        <p className="text-white font-black text-sm truncate max-w-[200px]">{timer.taskTitle}</p>
+        <p className="text-white font-black text-sm truncate">{timer.taskTitle}</p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         <span className="text-white font-mono font-black text-lg">{elapsed}</span>
         <button onClick={onStop}
           className="bg-white/20 text-white rounded-xl px-3 py-1.5 text-xs font-bold hover:bg-white/30 transition-colors">
@@ -448,75 +501,9 @@ function ActiveTimerBanner({ timer, onStop }: { timer: NonNullable<GameState['ac
   )
 }
 
-// ── Task Group ─────────────────────────────────────────────────────────────
-function TaskGroup({ label, tasks, completing, breaking, completedIds, activeTimer, expandedTasks, subtasksMap, loadingSubtasks, onComplete, onBreakdown, onToggleSubtasks, onStartTimer, onStopTimer }: {
-  label: string
-  tasks: QuestTask[]
-  completing: string | null
-  breaking: string | null
-  completedIds: string[]
-  activeTimer: GameState['activeTimer']
-  expandedTasks: Set<string>
-  subtasksMap: Record<string, QuestTask[]>
-  loadingSubtasks: string | null
-  onComplete: (t: QuestTask, e: React.MouseEvent) => void
-  onBreakdown: (t: QuestTask) => void
-  onToggleSubtasks: (id: string) => void
-  onStartTimer: (t: QuestTask) => void
-  onStopTimer: () => void
-}) {
-  const bosses = tasks.filter(t => t.priority === 'High 🚨')
-  const normal = tasks.filter(t => t.priority !== 'High 🚨')
-
-  return (
-    <div>
-      <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">{label}</h2>
-      <div className="flex flex-col gap-2">
-        {bosses.map(t => (
-          <div key={t.id}>
-            <BossCard task={t}
-              completing={completing === t.id} breaking={breaking === t.id}
-              isTimerActive={activeTimer?.taskId === t.id}
-              hasAnyTimer={!!activeTimer}
-              onComplete={e => onComplete(t, e)} onBreakdown={() => onBreakdown(t)}
-              onStartTimer={() => onStartTimer(t)} onStopTimer={onStopTimer}
-              hasSubtasks={t.hasSubtasks} expanded={expandedTasks.has(t.id)}
-              onToggleSubtasks={() => onToggleSubtasks(t.id)} />
-            {expandedTasks.has(t.id) && (
-              <SubtaskList subtasks={subtasksMap[t.id]} loading={loadingSubtasks === t.id}
-                completedIds={completedIds} completing={completing}
-                onComplete={onComplete} />
-            )}
-          </div>
-        ))}
-        {normal.map(t => (
-          <div key={t.id}>
-            <TaskCard task={t}
-              completing={completing === t.id} breaking={breaking === t.id}
-              isTimerActive={activeTimer?.taskId === t.id}
-              hasAnyTimer={!!activeTimer}
-              onComplete={e => onComplete(t, e)} onBreakdown={() => onBreakdown(t)}
-              onStartTimer={() => onStartTimer(t)} onStopTimer={onStopTimer}
-              hasSubtasks={t.hasSubtasks} expanded={expandedTasks.has(t.id)}
-              onToggleSubtasks={() => onToggleSubtasks(t.id)} />
-            {expandedTasks.has(t.id) && (
-              <SubtaskList subtasks={subtasksMap[t.id]} loading={loadingSubtasks === t.id}
-                completedIds={completedIds} completing={completing}
-                onComplete={onComplete} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // ── Subtask List ──────────────────────────────────────────────────────────
 function SubtaskList({ subtasks, loading, completedIds, completing, onComplete }: {
-  subtasks?: QuestTask[]
-  loading: boolean
-  completedIds: string[]
-  completing: string | null
+  subtasks?: QuestTask[]; loading: boolean; completedIds: string[]; completing: string | null
   onComplete: (t: QuestTask, e: React.MouseEvent) => void
 }) {
   if (loading) return <div className="ml-8 py-2"><span className="text-xs text-gray-400 animate-pulse">Loading subtasks...</span></div>
@@ -526,12 +513,8 @@ function SubtaskList({ subtasks, loading, completedIds, completing, onComplete }
   const done = subtasks.filter(s => completedIds.includes(s.id) || s.status === 'Done')
 
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      className="ml-6 border-l-2 border-petal-200 pl-3 py-1"
-    >
+    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+      className="ml-6 border-l-2 border-petal-200 pl-3 py-1">
       {active.map(sub => (
         <div key={sub.id} className="flex items-center gap-2 py-1.5">
           <button onClick={e => onComplete(sub, e)} disabled={completing === sub.id}
@@ -558,17 +541,14 @@ function SubtaskList({ subtasks, loading, completedIds, completing, onComplete }
 function OverdueBadge({ days }: { days: number }) {
   if (days <= 0) return null
   return (
-    <motion.span
-      animate={{ scale: [1, 1.05, 1] }}
-      transition={{ repeat: Infinity, duration: 2 }}
-      className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold"
-    >
+    <motion.span animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+      className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold">
       ⏰ {days}d overdue
     </motion.span>
   )
 }
 
-// ── Boss Battle Card ───────────────────────────────────────────────────────
+// ── Boss Card ─────────────────────────────────────────────────────────────
 function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onComplete, onBreakdown, onStartTimer, onStopTimer, hasSubtasks, expanded, onToggleSubtasks }: {
   task: QuestTask; completing: boolean; breaking: boolean
   isTimerActive: boolean; hasAnyTimer: boolean
@@ -577,10 +557,8 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
   hasSubtasks: boolean; expanded: boolean; onToggleSubtasks: () => void
 }) {
   return (
-    <motion.div
-      layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
-      className={`relative rounded-2xl overflow-hidden shadow-lg ${task.daysOverdue > 0 ? 'ring-2 ring-red-500' : ''}`}
-    >
+    <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
+      className={`relative rounded-2xl overflow-hidden shadow-lg ${task.daysOverdue > 0 ? 'ring-2 ring-red-500' : ''}`}>
       <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-petal-900 opacity-95" />
       <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
       <motion.div className="absolute inset-0 rounded-2xl"
@@ -612,14 +590,12 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2 flex-wrap">
-          {/* Timer button */}
+        <div className="mt-3 flex gap-3 flex-wrap">
           {isTimerActive ? (
             <button onClick={onStopTimer} className="text-xs font-bold text-red-300 hover:text-red-200">⏹️ Stop timer</button>
           ) : (
             <button onClick={onStartTimer} disabled={hasAnyTimer} className="text-xs font-bold text-green-300 hover:text-green-200 disabled:opacity-30">▶️ Start timer</button>
           )}
-          {/* Subtasks */}
           {hasSubtasks && (
             <button onClick={onToggleSubtasks} className="text-xs font-bold text-lavender-300 hover:text-lavender-200">
               {expanded ? '▾ Hide subtasks' : '▸ Show subtasks'}
@@ -636,12 +612,11 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
   )
 }
 
-// ── Regular Task Card ──────────────────────────────────────────────────────
+// ── Task Card ─────────────────────────────────────────────────────────────
 const TASK_TYPE_ICONS: Record<string, string> = {
   'Strategic Tasks 🧠': '🧠', 'Creative / Production Tasks 🏗️': '🏗️',
   'Operational Tasks ⚙️': '⚙️', 'Analytical / Review Tasks 📊': '📊',
 }
-
 const STATUS_COLORS: Record<string, string> = {
   'Done': 'bg-mint-200 text-green-700', 'In progress': 'bg-lavender-100 text-lavender-500',
   'Not started': 'bg-gray-100 text-gray-500', 'Backlog': 'bg-gray-100 text-gray-400',
@@ -660,8 +635,7 @@ function TaskCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20, scale: 0.9 }}
-      className={`quest-card bg-white rounded-2xl p-4 shadow-card border ${task.daysOverdue > 0 ? 'border-red-300 bg-red-50/30' : 'border-gray-50'}`}
-    >
+      className={`quest-card bg-white rounded-2xl p-4 shadow-card border ${task.daysOverdue > 0 ? 'border-red-300 bg-red-50/30' : 'border-gray-50'}`}>
       <div className="flex items-start gap-3">
         <button onClick={onComplete} disabled={completing}
           className={`mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -683,16 +657,13 @@ function TaskCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
           </div>
         </div>
       </div>
-
       <div className="mt-3 flex justify-between items-center">
         <div className="flex gap-3">
-          {/* Timer */}
           {isTimerActive ? (
             <button onClick={onStopTimer} className="text-xs font-bold text-red-500 hover:text-red-600">⏹️ Stop timer</button>
           ) : (
             <button onClick={onStartTimer} disabled={hasAnyTimer} className="text-xs font-bold text-green-500 hover:text-green-600 disabled:opacity-30 disabled:cursor-not-allowed">▶️ Start</button>
           )}
-          {/* Subtasks */}
           {hasSubtasks && (
             <button onClick={onToggleSubtasks} className="text-xs font-bold text-lavender-400 hover:text-lavender-500">
               {expanded ? '▾ Subtasks' : '▸ Subtasks'}
@@ -711,11 +682,7 @@ function TaskCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
 }
 
 function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {[1, 2, 3, 4].map(i => <div key={i} className="bg-white rounded-2xl p-4 shadow-card animate-pulse h-20" />)}
-    </div>
-  )
+  return <div className="flex flex-col gap-2">{[1, 2, 3, 4].map(i => <div key={i} className="bg-white rounded-2xl p-4 shadow-card animate-pulse h-20" />)}</div>
 }
 
 function EmptyState() {

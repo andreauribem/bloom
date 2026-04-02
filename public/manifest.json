@@ -5,5 +5,12 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fdf2f8",
-  "theme_color": "#f9a8d4"
+  "theme_color": "#f9a8d4",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
 }
