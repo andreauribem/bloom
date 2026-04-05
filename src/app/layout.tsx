@@ -27,7 +27,25 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="overscroll-none">{children}</body>
+      <body className="overscroll-none">
+        {children}
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+              reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'activated') {
+                      window.location.reload();
+                    }
+                  });
+                }
+              });
+            });
+          }
+        `}} />
+      </body>
     </html>
   )
 }
