@@ -46,6 +46,23 @@ export async function GET() {
   }
 }
 
+export async function DELETE() {
+  try {
+    const redis = await getRedis()
+    if (redis) {
+      await redis.del(STATE_KEY)
+    } else {
+      const { existsSync, unlinkSync } = await import('fs')
+      const { join } = await import('path')
+      const file = join(process.cwd(), 'data', 'state.json')
+      if (existsSync(file)) unlinkSync(file)
+    }
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const state = await req.json()

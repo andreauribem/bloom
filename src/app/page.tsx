@@ -21,6 +21,18 @@ export default function Home() {
 
   useEffect(() => {
     async function init() {
+      // Check for ?reset=1 in URL — full fresh start
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('reset') === '1') {
+        // Clear everything
+        localStorage.removeItem('bloom_state_v1')
+        localStorage.removeItem('questapp_state_v2')
+        localStorage.removeItem('questapp_state')
+        await fetch('/api/state', { method: 'DELETE' }).catch(() => {})
+        // Remove ?reset from URL without reload
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+
       let base: GameState
       try {
         const res = await fetch('/api/state')
