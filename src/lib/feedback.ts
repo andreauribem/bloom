@@ -105,3 +105,41 @@ export function soundError() {
   playTone(200, 0.15, 'sawtooth', 0.08)
   setTimeout(() => playTone(150, 0.2, 'sawtooth', 0.08), 100)
 }
+
+// Warning: low ominous tone when health drops below threshold
+export function soundWarning() {
+  playTone(150, 0.3, 'sawtooth', 0.06)
+  setTimeout(() => playTone(120, 0.4, 'sawtooth', 0.05), 200)
+  setTimeout(() => playTone(100, 0.5, 'sawtooth', 0.04), 400)
+}
+
+// Sad music: slow descending minor chord when pet is sick
+export function soundSadMusic() {
+  const notes = [440, 415, 370, 330, 294, 262]
+  notes.forEach((freq, i) => {
+    setTimeout(() => playTone(freq, 0.35, 'sine', 0.06), i * 200)
+  })
+}
+
+// Death: dramatic descending when pet faints
+export function soundDeath() {
+  playTone(400, 0.2, 'sawtooth', 0.1)
+  setTimeout(() => playTone(300, 0.2, 'sawtooth', 0.09), 150)
+  setTimeout(() => playTone(200, 0.3, 'sawtooth', 0.08), 300)
+  setTimeout(() => playTone(100, 0.5, 'sawtooth', 0.07), 450)
+  setTimeout(() => playTone(60, 0.8, 'sawtooth', 0.06), 600)
+}
+
+// Habit complete: soft positive ping
+export function soundHabitComplete() {
+  playTone(700, 0.08, 'sine', 0.08)
+  setTimeout(() => playTone(900, 0.12, 'sine', 0.07), 60)
+}
+
+// All habits complete: celebratory jingle
+export function soundAllHabitsComplete() {
+  const notes = [523, 659, 784, 880, 1047]
+  notes.forEach((freq, i) => {
+    setTimeout(() => playTone(freq, 0.12, 'triangle', 0.1), i * 80)
+  })
+}

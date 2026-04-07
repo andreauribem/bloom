@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel } from '@/lib/gameStore'
 import { getPetEmoji } from '@/lib/petEvolution'
-import { DailyCheckinModal, PetPickerModal, AchievementsModal } from './Modals'
+import { PetPickerModal, AchievementsModal } from './Modals'
+import HabitTracker from './HabitTracker'
 
 type Props = {
   state: GameState
@@ -122,7 +123,7 @@ export default function MobileHeader({ state, onStateChange }: Props) {
                 {/* Quick actions */}
                 <button onClick={() => setShowCheckin(true)}
                   className="col-span-2 bg-white border-2 border-dashed border-petal-300 rounded-2xl p-2.5 text-center">
-                  <span className="text-xs font-bold text-gray-600">📋 Check-in</span>
+                  <span className="text-xs font-bold text-gray-600">📋 Habits</span>
                 </button>
 
                 <button onClick={() => setShowAchievements(true)}
@@ -150,9 +151,9 @@ export default function MobileHeader({ state, onStateChange }: Props) {
           />
         )}
         {showCheckin && (
-          <DailyCheckinModal
+          <HabitTracker
             state={state}
-            onSave={next => { saveState(next); onStateChange(next); setShowCheckin(false) }}
+            onStateChange={(next) => { saveState(next); onStateChange(next) }}
             onClose={() => setShowCheckin(false)}
           />
         )}

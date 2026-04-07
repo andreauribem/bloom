@@ -25,6 +25,30 @@ export type DailyCheck = {
   learned: boolean
 }
 
+// ── Habits system ─────────────────────────────────────────────────────────
+export type HabitSchedule = {
+  type: 'daily' | 'specific_days' | 'times_per_week'
+  days?: number[]        // 0=Sun..6=Sat
+  timesPerWeek?: number
+}
+
+export type Habit = {
+  id: string
+  name: string
+  emoji: string
+  importance: 'low' | 'medium' | 'high'  // energy: 5, 10, 15
+  schedule: HabitSchedule
+  active: boolean
+  notionPageId?: string
+  createdAt: string
+}
+
+export type HabitLog = {
+  date: string      // YYYY-MM-DD
+  habitId: string
+  completed: boolean
+}
+
 export type Achievement = {
   id: string
   title: string
@@ -77,6 +101,11 @@ export type GameState = {
   equippedHat: string | null
   equippedBackground: string | null
   equippedEffect: string | null
+  // Habits
+  habits: Habit[]
+  habitLogs: HabitLog[]
+  // Death mechanic
+  deathTimestamp: number | null  // when health hit 0, null if alive
 }
 
 // ── Pets ───────────────────────────────────────────────────────────────────
@@ -237,7 +266,8 @@ export function getHealthLabel(health: number): { label: string; emoji: string; 
   if (health >= 40) return { label: 'Okay', emoji: '😐', color: 'text-yellow-500' }
   if (health >= 20) return { label: 'Struggling', emoji: '😟', color: 'text-orange-500' }
   if (health >= 15) return { label: 'Sick!', emoji: '🤒', color: 'text-red-500' }
-  return { label: 'Asleep...', emoji: '😴', color: 'text-gray-500' }
+  if (health > 0) return { label: 'Dying...', emoji: '😰', color: 'text-red-600' }
+  return { label: 'Fainted!', emoji: '💀', color: 'text-gray-600' }
 }
 
 // ── Health consequences ───────────────────────────────────────────────────
@@ -247,6 +277,11 @@ export type HealthPenalty = {
   celebrationsDisabled: boolean // 0%: no fun, no celebrations
   petSick: boolean             // < 15%: pet looks sick
   petAsleep: boolean           // 0%: pet is asleep, grayscale
+  // Stronger penalties
+  dangerZone: boolean          // < 50%: pulsing red border, worried phrases
+  starsReduced25: boolean      // < 30%: earn 25% fewer stars
+  starsReduced50: boolean      // < 15%: earn 50% fewer stars
+  petFainted: boolean          // 0%: dramatic faint, everything locked except tasks
 }
 
 export function getHealthPenalties(health: number): HealthPenalty {
@@ -256,6 +291,10 @@ export function getHealthPenalties(health: number): HealthPenalty {
     celebrationsDisabled: health === 0,
     petSick: health < 15 && health > 0,
     petAsleep: health === 0,
+    dangerZone: health < 50,
+    starsReduced25: health < 30 && health >= 15,
+    starsReduced50: health < 15,
+    petFainted: health === 0,
   }
 }
 
@@ -288,10 +327,24 @@ export function getPetPhrase(state: GameState): string {
   const e = Number.isFinite(state.energy) ? state.energy : 70
   const c = Number.isFinite(state.cleanliness) ? state.cleanliness : 70
 
+  // Death state
+  const health = getOverallHealth(state)
+  if (health === 0) return '~I can\'t go on... please help me... 💀~'
+  if (health < 15) return '~I\'m dying... I need you to work... please... 😰~'
+
   if (state.petMood === 'excited') return '~so proud of you!~'
   if (state.petMood === 'happy') return '~keep going!~'
 
   const lowest = Math.min(h, ha, e, c)
+
+  // Danger zone phrases (< 50% health)
+  if (health < 30) {
+    if (h === lowest) return '~I\'m starving... I\'m scared... 😢~'
+    if (ha === lowest) return '~I feel so unloved... 😢~'
+    if (e === lowest) return '~I can barely stay awake... 😢~'
+    if (c === lowest) return '~I feel so neglected... 😢~'
+  }
+
   if (lowest < 20) {
     if (h === lowest) return '~I\'m so hungry... complete a task!~'
     if (ha === lowest) return '~I\'m feeling sad... treat yourself!~'
@@ -402,6 +455,9 @@ function defaultState(): GameState {
     equippedHat: null,
     equippedBackground: null,
     equippedEffect: null,
+    habits: [],
+    habitLogs: [],
+    deathTimestamp: null,
   }
 }
 
@@ -448,6 +504,8 @@ export type EarnResult = {
   starsEarned: number
   comboMultiplier: number
   evolved: boolean
+  needsChanged: { hunger: number; cleanliness: number }
+  starsPenalty: number  // 0 if no penalty, otherwise % reduced (25 or 50)
 }
 
 export function earnStars(state: GameState, baseAmount: number, isBoss = false): EarnResult {
@@ -456,8 +514,15 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
 
   const timeSinceCombo = now - state.lastComboTime
   const newComboCount = timeSinceCombo < COMBO_WINDOW_MS ? state.comboCount + 1 : 1
-  const multiplier = getComboMultiplier(newComboCount)
-  const starsEarned = Math.round(baseAmount * multiplier)
+
+  // Health penalties reduce star earnings
+  const currentHealth = getOverallHealth(state)
+  const penalties = getHealthPenalties(currentHealth)
+  const multiplier = penalties.comboDisabled ? 1 : getComboMultiplier(newComboCount)
+  let starsEarned = Math.round(baseAmount * multiplier)
+  let starsPenalty = 0
+  if (penalties.starsReduced50) { starsEarned = Math.round(starsEarned * 0.5); starsPenalty = 50 }
+  else if (penalties.starsReduced25) { starsEarned = Math.round(starsEarned * 0.75); starsPenalty = 25 }
   const xpGain = starsEarned * 10
 
   let newStreak = state.streak
@@ -520,8 +585,16 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
     )}
   }
 
+  // Track death timestamp
+  const health = getOverallHealth(next)
+  if (health === 0 && !next.deathTimestamp) {
+    next = { ...next, deathTimestamp: now }
+  } else if (health > 0 && next.deathTimestamp) {
+    next = { ...next, deathTimestamp: null }
+  }
+
   const { state: withAchievements, newAchievements } = checkAchievements(next)
-  return { state: withAchievements, leveledUp: newLevel > oldLevel, newLevel, oldLevel, newAchievements, starsEarned, comboMultiplier: multiplier, evolved }
+  return { state: withAchievements, leveledUp: newLevel > oldLevel, newLevel, oldLevel, newAchievements, starsEarned, comboMultiplier: multiplier, evolved, needsChanged: { hunger: 15, cleanliness: cleanlinessBoost }, starsPenalty }
 }
 
 export function spendStars(state: GameState, amount: number): GameState {
@@ -582,4 +655,172 @@ export function claimChallenge(state: GameState, challengeId: string, xpReward: 
     xp: state.xp + xpReward,
     claimedChallenges: claimed,
   }
+}
+
+// ── Death mechanic ────────────────────────────────────────────────────────
+const DEATH_TIMEOUT_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+export function checkDeathTimer(state: GameState): GameState {
+  if (!state.deathTimestamp) return state
+  const health = getOverallHealth(state)
+  // Revived — clear death
+  if (health > 0) return { ...state, deathTimestamp: null }
+  // Check if 24h have passed
+  const elapsed = Date.now() - state.deathTimestamp
+  if (elapsed >= DEATH_TIMEOUT_MS) {
+    // Reset pet to level 1 but keep habits, rewards, and accessories
+    return {
+      ...state,
+      level: 1,
+      xp: 0,
+      stars: Math.max(0, state.stars - 50), // lose 50 stars as penalty
+      petStage: 'baby' as PetStage,
+      streak: 0,
+      comboCount: 0,
+      hunger: 50,
+      happiness: 50,
+      energy: 50,
+      cleanliness: 50,
+      deathTimestamp: null,
+      petMood: 'tired',
+    }
+  }
+  return state
+}
+
+export function getDeathCountdown(state: GameState): { hours: number; minutes: number } | null {
+  if (!state.deathTimestamp) return null
+  const elapsed = Date.now() - state.deathTimestamp
+  const remaining = Math.max(0, DEATH_TIMEOUT_MS - elapsed)
+  return {
+    hours: Math.floor(remaining / (1000 * 60 * 60)),
+    minutes: Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60)),
+  }
+}
+
+// ── Update death timestamp on needs tick ──────────────────────────────────
+export function updateDeathTimestamp(state: GameState): GameState {
+  const health = getOverallHealth(state)
+  if (health === 0 && !state.deathTimestamp) {
+    return { ...state, deathTimestamp: Date.now() }
+  }
+  if (health > 0 && state.deathTimestamp) {
+    return { ...state, deathTimestamp: null }
+  }
+  return state
+}
+
+// ── Habits ────────────────────────────────────────────────────────────────
+
+export function getDefaultHabits(): Habit[] {
+  const now = new Date().toISOString()
+  return [
+    { id: 'default_slept', name: 'Slept well', emoji: '🌙', importance: 'high', schedule: { type: 'daily' }, active: true, createdAt: now },
+    { id: 'default_exercised', name: 'Exercised', emoji: '🏃‍♀️', importance: 'medium', schedule: { type: 'daily' }, active: true, createdAt: now },
+    { id: 'default_water', name: 'Drank enough water', emoji: '💧', importance: 'medium', schedule: { type: 'daily' }, active: true, createdAt: now },
+    { id: 'default_noPhone', name: 'No phone 1h', emoji: '📵', importance: 'low', schedule: { type: 'daily' }, active: true, createdAt: now },
+    { id: 'default_learned', name: 'Learning session', emoji: '📚', importance: 'high', schedule: { type: 'daily' }, active: true, createdAt: now },
+  ]
+}
+
+export function isHabitScheduledForToday(habit: Habit, date: Date = new Date()): boolean {
+  if (!habit.active) return false
+  if (habit.schedule.type === 'daily') return true
+  if (habit.schedule.type === 'specific_days') {
+    const dayOfWeek = date.getDay() // 0=Sun..6=Sat
+    return (habit.schedule.days ?? []).includes(dayOfWeek)
+  }
+  // times_per_week: always show it, user decides when
+  return true
+}
+
+export function getTodayHabits(habits: Habit[]): Habit[] {
+  return habits.filter(h => isHabitScheduledForToday(h))
+}
+
+export function getHabitEnergy(importance: Habit['importance']): number {
+  return importance === 'high' ? 15 : importance === 'medium' ? 10 : 5
+}
+
+export function getHabitCompletionsThisWeek(habitId: string, logs: HabitLog[]): number {
+  const now = new Date()
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - now.getDay()) // Sunday
+  startOfWeek.setHours(0, 0, 0, 0)
+  const weekStart = startOfWeek.toISOString().split('T')[0]
+  return logs.filter(l => l.habitId === habitId && l.completed && l.date >= weekStart).length
+}
+
+export function isHabitCompletedToday(habitId: string, logs: HabitLog[]): boolean {
+  const today = new Date().toISOString().split('T')[0]
+  return logs.some(l => l.habitId === habitId && l.date === today && l.completed)
+}
+
+export function completeHabit(state: GameState, habitId: string): { state: GameState; energyBoost: number; allComplete: boolean } {
+  const today = new Date().toISOString().split('T')[0]
+  const habit = state.habits.find(h => h.id === habitId)
+  if (!habit) return { state, energyBoost: 0, allComplete: false }
+
+  // Add/update log
+  const existingIdx = state.habitLogs.findIndex(l => l.habitId === habitId && l.date === today)
+  let newLogs = [...state.habitLogs]
+  if (existingIdx >= 0) {
+    newLogs[existingIdx] = { ...newLogs[existingIdx], completed: true }
+  } else {
+    newLogs.push({ date: today, habitId, completed: true })
+  }
+
+  const energyBoost = getHabitEnergy(habit.importance)
+  const energy = clampNeed((state.energy ?? 70) + energyBoost)
+
+  // Check if all today's habits are now complete
+  const todayHabits = getTodayHabits(state.habits)
+  const allComplete = todayHabits.every(h =>
+    h.id === habitId || newLogs.some(l => l.habitId === h.id && l.date === today && l.completed)
+  )
+
+  // All-complete bonus: +10 energy
+  const finalEnergy = allComplete ? clampNeed(energy + 10) : energy
+  const totalBoost = allComplete ? energyBoost + 10 : energyBoost
+
+  // Also update wellness based on completion ratio
+  const completedCount = todayHabits.filter(h =>
+    h.id === habitId || newLogs.some(l => l.habitId === h.id && l.date === today && l.completed)
+  ).length
+  const score = completedCount
+  const delta = score * 12 - 15
+  const wellness = Math.min(100, Math.max(0, (state.wellness ?? 50) + delta))
+
+  const next: GameState = { ...state, habitLogs: newLogs, energy: finalEnergy, wellness }
+  return { state: { ...next, petMood: deriveMood(next) }, energyBoost: totalBoost, allComplete }
+}
+
+export function uncompleteHabit(state: GameState, habitId: string): GameState {
+  const today = new Date().toISOString().split('T')[0]
+  const habit = state.habits.find(h => h.id === habitId)
+  if (!habit) return state
+
+  const newLogs = state.habitLogs.map(l =>
+    l.habitId === habitId && l.date === today ? { ...l, completed: false } : l
+  )
+
+  const energyLoss = getHabitEnergy(habit.importance)
+  const energy = clampNeed((state.energy ?? 70) - energyLoss)
+  const next = { ...state, habitLogs: newLogs, energy }
+  return { ...next, petMood: deriveMood(next) }
+}
+
+export function getHabitStreak(habitId: string, logs: HabitLog[], habit: Habit): number {
+  let streak = 0
+  const today = new Date()
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    if (!isHabitScheduledForToday(habit, d)) continue
+    const dateStr = d.toISOString().split('T')[0]
+    const completed = logs.some(l => l.habitId === habitId && l.date === dateStr && l.completed)
+    if (completed) streak++
+    else break
+  }
+  return streak
 }

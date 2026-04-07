@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { GameState, Reward, spendStars, saveState, boostHappiness, getOverallHealth, getHealthPenalties } from '@/lib/gameStore'
 import { hapticSuccess, soundCoin } from '@/lib/feedback'
 import AccessoryShop from './AccessoryShop'
+import { NeedFeedback, NeedFeedbackItem } from './NeedFeedback'
 
 type Props = {
   state: GameState
@@ -15,11 +16,12 @@ export default function RewardStore({ state, onStateChange }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [newReward, setNewReward] = useState({ title: '', cost: 30, emoji: '🎁' })
   const [celebrating, setCelebrating] = useState<string | null>(null)
+  const [needFeedbacks, setNeedFeedbacks] = useState<NeedFeedbackItem[]>([])
 
   const health = getOverallHealth(state)
   const penalties = getHealthPenalties(health)
 
-  function redeem(reward: Reward) {
+  function redeem(reward: Reward, e: React.MouseEvent) {
     if (penalties.rewardStoreLocked) return
     if (state.stars < reward.cost) return
     hapticSuccess()
@@ -36,6 +38,10 @@ export default function RewardStore({ state, onStateChange }: Props) {
     }
     saveState(next)
     onStateChange(next)
+    // Happiness feedback animation
+    const fb: NeedFeedbackItem = { id: `happy-${Date.now()}`, type: 'happiness', amount: 20, x: e.clientX, y: e.clientY }
+    setNeedFeedbacks(prev => [...prev, fb])
+    setTimeout(() => setNeedFeedbacks(prev => prev.filter(f => f.id !== fb.id)), 1500)
     setTimeout(() => setCelebrating(null), 1500)
   }
 
@@ -138,7 +144,7 @@ export default function RewardStore({ state, onStateChange }: Props) {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => redeem(reward)}
+                    onClick={(e) => redeem(reward, e)}
                     disabled={state.stars < reward.cost}
                     className={`px-2 py-1 rounded-xl text-xs font-bold transition-all ${
                       state.stars >= reward.cost
@@ -263,6 +269,11 @@ export default function RewardStore({ state, onStateChange }: Props) {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Need feedback animations */}
+      <AnimatePresence>
+        {needFeedbacks.map(nf => <NeedFeedback key={nf.id} item={nf} />)}
       </AnimatePresence>
     </div>
   )

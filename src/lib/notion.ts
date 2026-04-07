@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client'
-import { calcStars } from './gameStore'
+import { calcStars, Habit, HabitLog, HabitSchedule } from './gameStore'
 
 export const notion = new Client({ auth: process.env.NOTION_TOKEN })
 
@@ -9,6 +9,8 @@ const DB = {
   pbContent:     process.env.NOTION_PB_CONTENT_DB!,
   pbTasks:       process.env.NOTION_PB_TASKS_DB!,
   timeTracker:   process.env.NOTION_TIME_TRACKER_DB!,
+  habits:        process.env.NOTION_HABITS_DB || '',
+  habitLogs:     process.env.NOTION_HABIT_LOGS_DB || '',
 }
 
 export type QuestTask = {
@@ -327,4 +329,127 @@ export async function createSubtask(parentId: string, title: string, source: 'so
     },
   })
   return page.id
+}
+
+// ── Habits ────────────────────────────────────────────────────────────────
+
+const DAY_NAME_MAP: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+const DAY_NUM_MAP: Record<number, string> = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' }
+
+function mapNotionToHabit(page: any): Habit {
+  const props = page.properties
+  const titleProp = props.Name?.title?.[0]?.plain_text ?? 'Habit'
+  const emojiProp = props.Emoji?.rich_text?.[0]?.plain_text ?? '📋'
+  const importanceProp = (props.Importance?.select?.name?.toLowerCase() ?? 'medium') as Habit['importance']
+  const scheduleTypeProp = props['Schedule Type']?.select?.name ?? 'Daily'
+  const daysProp = props['Schedule Days']?.multi_select?.map((s: any) => DAY_NAME_MAP[s.name]).filter((d: number | undefined) => d !== undefined) ?? []
+  const timesPerWeekProp = props['Times Per Week']?.number ?? undefined
+  const activeProp = props.Active?.checkbox ?? true
+
+  let schedType: HabitSchedule['type'] = 'daily'
+  if (scheduleTypeProp === 'Specific Days') schedType = 'specific_days'
+  else if (scheduleTypeProp === 'Times per Week') schedType = 'times_per_week'
+
+  return {
+    id: `notion_${page.id}`,
+    name: titleProp,
+    emoji: emojiProp,
+    importance: importanceProp,
+    schedule: {
+      type: schedType,
+      ...(schedType === 'specific_days' ? { days: daysProp } : {}),
+      ...(schedType === 'times_per_week' ? { timesPerWeek: timesPerWeekProp } : {}),
+    },
+    active: activeProp,
+    notionPageId: page.id,
+    createdAt: page.created_time,
+  }
+}
+
+export async function getHabits(): Promise<Habit[]> {
+  if (!DB.habits) return []
+  try {
+    const res = await notion.databases.query({
+      database_id: DB.habits,
+      filter: { property: 'Active', checkbox: { equals: true } },
+    })
+    return res.results.map(mapNotionToHabit)
+  } catch (e) {
+    console.error('Failed to fetch habits from Notion:', e)
+    return []
+  }
+}
+
+export async function createHabitInNotion(habit: Habit): Promise<string> {
+  if (!DB.habits) return ''
+  const schedTypeName = habit.schedule.type === 'specific_days' ? 'Specific Days'
+    : habit.schedule.type === 'times_per_week' ? 'Times per Week'
+    : 'Daily'
+
+  const page = await notion.pages.create({
+    parent: { database_id: DB.habits },
+    properties: {
+      Name: { title: [{ text: { content: habit.name } }] },
+      Emoji: { rich_text: [{ text: { content: habit.emoji } }] },
+      Importance: { select: { name: habit.importance.charAt(0).toUpperCase() + habit.importance.slice(1) } },
+      'Schedule Type': { select: { name: schedTypeName } },
+      ...(habit.schedule.type === 'specific_days' && habit.schedule.days ? {
+        'Schedule Days': { multi_select: habit.schedule.days.map(d => ({ name: DAY_NUM_MAP[d] })) },
+      } : {}),
+      ...(habit.schedule.type === 'times_per_week' && habit.schedule.timesPerWeek ? {
+        'Times Per Week': { number: habit.schedule.timesPerWeek },
+      } : {}),
+      Active: { checkbox: true },
+    },
+  })
+  return page.id
+}
+
+export async function updateHabitInNotion(pageId: string, habit: Partial<Habit>): Promise<void> {
+  if (!DB.habits) return
+  const properties: Record<string, any> = {}
+  if (habit.name) properties.Name = { title: [{ text: { content: habit.name } }] }
+  if (habit.emoji) properties.Emoji = { rich_text: [{ text: { content: habit.emoji } }] }
+  if (habit.importance) properties.Importance = { select: { name: habit.importance.charAt(0).toUpperCase() + habit.importance.slice(1) } }
+  if (habit.active !== undefined) properties.Active = { checkbox: habit.active }
+
+  await notion.pages.update({ page_id: pageId, properties })
+}
+
+export async function logHabitCompletion(habitNotionId: string, date: string, completed: boolean): Promise<string> {
+  if (!DB.habitLogs) return ''
+  const page = await notion.pages.create({
+    parent: { database_id: DB.habitLogs },
+    properties: {
+      Name: { title: [{ text: { content: `${date}` } }] },
+      Habit: { relation: [{ id: habitNotionId }] },
+      Date: { date: { start: date } },
+      Completed: { checkbox: completed },
+    },
+  })
+  return page.id
+}
+
+export async function getHabitLogs(from: string, to: string): Promise<HabitLog[]> {
+  if (!DB.habitLogs) return []
+  try {
+    const res = await notion.databases.query({
+      database_id: DB.habitLogs,
+      filter: {
+        and: [
+          { property: 'Date', date: { on_or_after: from } },
+          { property: 'Date', date: { on_or_before: to } },
+        ],
+      },
+      page_size: 100,
+    })
+    return res.results.map((p: any) => ({
+      date: p.properties.Date?.date?.start ?? '',
+      habitId: `notion_${p.properties.Habit?.relation?.[0]?.id ?? ''}`,
+      completed: p.properties.Completed?.checkbox ?? false,
+    }))
+  } catch (e) {
+    console.error('Failed to fetch habit logs from Notion:', e)
+    return []
+  }
 }

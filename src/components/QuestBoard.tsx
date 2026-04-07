@@ -9,8 +9,9 @@ import {
 } from './CelebrationModals'
 import { Achievement } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel } from '@/lib/petEvolution'
-import { hapticMedium, hapticSuccess, hapticHeavy, soundCoin, soundComplete, soundLevelUp, soundCombo, soundEvolution, soundAchievement } from '@/lib/feedback'
+import { hapticMedium, hapticSuccess, hapticHeavy, soundCoin, soundComplete, soundLevelUp, soundCombo, soundEvolution, soundAchievement, soundWarning } from '@/lib/feedback'
 import DailyChallenges from './DailyChallenges'
+import { NeedFeedback, NeedFeedbackItem } from './NeedFeedback'
 
 type Props = {
   state: GameState
@@ -42,6 +43,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   // Celebration queue
   const [celebQueue, setCelebQueue] = useState<CelebEvent[]>([])
   const [starBursts, setStarBursts] = useState<{ id: string; count: number; x: number; y: number }[]>([])
+  const [needFeedbacks, setNeedFeedbacks] = useState<NeedFeedbackItem[]>([])
 
   const pushCeleb = (e: CelebEvent) => setCelebQueue(q => [...q, e])
   const popCeleb = () => setCelebQueue(q => q.slice(1))
@@ -277,6 +279,24 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       soundComplete()
       hapticMedium()
 
+      // Need feedback animations
+      const feedbacks: NeedFeedbackItem[] = []
+      if (result.needsChanged.hunger > 0) {
+        feedbacks.push({ id: `hunger-${Date.now()}`, type: 'hunger', amount: result.needsChanged.hunger, x: e.clientX - 40, y: e.clientY })
+      }
+      if (result.needsChanged.cleanliness > 0) {
+        feedbacks.push({ id: `clean-${Date.now()}`, type: 'cleanliness', amount: result.needsChanged.cleanliness, x: e.clientX + 40, y: e.clientY })
+      }
+      if (feedbacks.length > 0) {
+        setNeedFeedbacks(prev => [...prev, ...feedbacks])
+        setTimeout(() => setNeedFeedbacks(prev => prev.filter(f => !feedbacks.some(nf => nf.id === f.id))), 1500)
+      }
+
+      // Star penalty warning
+      if (result.starsPenalty > 0) {
+        soundWarning()
+      }
+
       const currentPenalties = getHealthPenalties(getOverallHealth(finalState))
 
       // Queue celebrations (disabled when pet is asleep)
@@ -370,22 +390,38 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   return (
     <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-      {/* Health warning banner */}
-      {penalties.petAsleep && (
-        <div className="bg-gray-800 rounded-2xl px-4 py-3 text-center">
-          <p className="text-white font-black text-sm">😴 Your pet is asleep...</p>
-          <p className="text-gray-400 text-xs">Complete tasks to wake them up. No celebrations or combos until they recover.</p>
+      {/* Health warning banners — escalating severity */}
+      {penalties.petFainted && (
+        <motion.div
+          className="bg-gray-900 rounded-2xl px-4 py-4 text-center border-2 border-red-500"
+          animate={{ borderColor: ['#ef4444', '#dc2626', '#ef4444'] }}
+          transition={{ repeat: Infinity, duration: 1.5 }}
+        >
+          <p className="text-3xl mb-1">💀</p>
+          <p className="text-white font-black text-sm">Your pet has FAINTED!</p>
+          <p className="text-red-400 text-xs mt-1">Everything is locked. Complete tasks NOW to revive.</p>
+          <p className="text-gray-500 text-xs mt-1">Stars earned are reduced by 50%. No combos, no rewards, no celebrations.</p>
+        </motion.div>
+      )}
+      {penalties.petSick && !penalties.petFainted && (
+        <motion.div
+          className="bg-red-50 border-2 border-red-300 rounded-2xl px-4 py-3 text-center"
+          animate={{ scale: [1, 1.01, 1] }}
+          transition={{ repeat: Infinity, duration: 2 }}
+        >
+          <p className="text-red-600 font-black text-sm">🤒 Your pet is DYING!</p>
+          <p className="text-red-400 text-xs">Stars reduced by 50%. No combos. Reward store locked.</p>
+        </motion.div>
+      )}
+      {penalties.starsReduced25 && !penalties.petSick && (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 text-center">
+          <p className="text-orange-600 font-black text-sm">😟 Your pet is struggling!</p>
+          <p className="text-orange-400 text-xs">Stars reduced by 25%. Reward store locked. Take care of your pet!</p>
         </div>
       )}
-      {penalties.petSick && !penalties.petAsleep && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-center">
-          <p className="text-red-600 font-black text-sm">🤒 Your pet is sick!</p>
-          <p className="text-red-400 text-xs">Combos disabled. Reward store locked. Take care of your pet!</p>
-        </div>
-      )}
-      {penalties.rewardStoreLocked && !penalties.petSick && (
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-2 text-center">
-          <p className="text-orange-600 text-xs font-bold">⚠️ Pet health too low — Reward Store locked until health &gt; 30%</p>
+      {penalties.dangerZone && !penalties.starsReduced25 && !penalties.petSick && !penalties.petFainted && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl px-4 py-2 text-center">
+          <p className="text-yellow-600 text-xs font-bold">⚠️ Pet health below 50% — entering danger zone!</p>
         </div>
       )}
 
@@ -399,6 +435,11 @@ export default function QuestBoard({ state, onStateChange }: Props) {
 
       <AnimatePresence>
         {starBursts.map(b => <StarBurst key={b.id} count={b.count} x={b.x} y={b.y} />)}
+      </AnimatePresence>
+
+      {/* Need feedback animations */}
+      <AnimatePresence>
+        {needFeedbacks.map(nf => <NeedFeedback key={nf.id} item={nf} />)}
       </AnimatePresence>
 
       {/* Sync Toast */}

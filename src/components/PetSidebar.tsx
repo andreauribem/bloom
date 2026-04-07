@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties } from '@/lib/gameStore'
+import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, getDeathCountdown } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
 import { getAccessory } from '@/lib/accessories'
+import HabitTracker from './HabitTracker'
 
 type Props = {
   state: GameState
@@ -28,6 +29,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
   const healthInfo = getHealthLabel(overallHealth)
   const penalties = getHealthPenalties(overallHealth)
   const nextStage = getNextStageLevelReq(state.level)
+  const deathCountdown = getDeathCountdown(state)
 
   // Pet reacts when a task is completed
   useEffect(() => {
@@ -69,13 +71,16 @@ export default function PetSidebar({ state, onStateChange }: Props) {
   return (
     <aside className="w-64 shrink-0 flex flex-col gap-3 p-4">
       {/* ── Pet card ── */}
-      <div
+      <motion.div
         className={`rounded-3xl p-4 shadow-card flex flex-col items-center gap-2 cursor-pointer relative overflow-hidden ${
-          penalties.petAsleep ? 'bg-gray-200 grayscale'
+          penalties.petFainted ? 'bg-gray-300 grayscale'
           : penalties.petSick ? 'bg-red-50 ring-2 ring-red-300'
+          : penalties.dangerZone ? 'bg-white ring-2 ring-red-300'
           : anyCritical ? 'bg-white ring-2 ring-red-300 ring-opacity-50'
           : 'bg-white'
         }`}
+        animate={penalties.dangerZone && !penalties.petFainted ? { borderColor: ['rgba(239,68,68,0.3)', 'rgba(239,68,68,0.8)', 'rgba(239,68,68,0.3)'] } : {}}
+        transition={penalties.dangerZone ? { repeat: Infinity, duration: 1.5 } : {}}
         onClick={() => setShowPetPicker(true)}
       >
         {/* Mood background glow */}
@@ -191,7 +196,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
           )}
 
           {/* Critical warning */}
-          {state.petMood === 'hungry' && (
+          {state.petMood === 'hungry' && !penalties.petFainted && (
             <motion.div
               className="absolute -top-2 -left-2 text-sm"
               animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
@@ -200,9 +205,43 @@ export default function PetSidebar({ state, onStateChange }: Props) {
               ❗
             </motion.div>
           )}
+
+          {/* Fainted overlay */}
+          {penalties.petFainted && (
+            <motion.div
+              className="absolute inset-0 flex items-center justify-center"
+              animate={{ opacity: [0.6, 1, 0.6] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+            >
+              <span className="text-4xl">💀</span>
+            </motion.div>
+          )}
+
+          {/* Sick overlay */}
+          {penalties.petSick && !penalties.petFainted && (
+            <motion.div
+              className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-lg"
+              animate={{ y: [0, -3, 0], opacity: [0.6, 1, 0.6] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+            >
+              🤒
+            </motion.div>
+          )}
         </div>
 
         <p className="font-black text-gray-800 text-lg leading-none relative">{state.petName}</p>
+
+        {/* Death countdown */}
+        {deathCountdown && (
+          <motion.div
+            className="bg-red-600 text-white rounded-xl px-3 py-1.5 text-center relative"
+            animate={{ scale: [1, 1.02, 1] }}
+            transition={{ repeat: Infinity, duration: 1 }}
+          >
+            <p className="text-xs font-black">FAINTED — revive in {deathCountdown.hours}h {deathCountdown.minutes}m</p>
+            <p className="text-xs opacity-70">or pet resets to Lv1!</p>
+          </motion.div>
+        )}
         <p className="text-xs text-gray-400 italic relative">
           {getPetPhrase(state)}
         </p>
@@ -250,7 +289,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
         </div>
 
         <p className="text-xs text-gray-400 mt-0.5 relative">tap to change pet ✨</p>
-      </div>
+      </motion.div>
 
       {/* ── Stars + Streak row ── */}
       <div className="grid grid-cols-2 gap-2">
@@ -291,16 +330,34 @@ export default function PetSidebar({ state, onStateChange }: Props) {
         </div>
       </button>
 
-      {/* ── Daily check-in ── */}
-      <button
-        onClick={() => setShowCheckin(true)}
-        className="bg-white rounded-2xl p-3 shadow-card text-left border-2 border-dashed border-petal-200 hover:border-petal-400 transition-colors"
-      >
-        <p className="text-xs font-bold text-gray-700">📋 Daily Check-in</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          restores energy ⚡
-        </p>
-      </button>
+      {/* ── Habits check-in ── */}
+      {(() => {
+        const todayHabits = state.habits?.length > 0
+          ? state.habits.filter(h => h.active)
+          : []
+        const today = new Date().toISOString().split('T')[0]
+        const completedCount = todayHabits.filter(h =>
+          (state.habitLogs ?? []).some(l => l.habitId === h.id && l.date === today && l.completed)
+        ).length
+        return (
+          <button
+            onClick={() => setShowCheckin(true)}
+            className="bg-white rounded-2xl p-3 shadow-card text-left border-2 border-dashed border-petal-200 hover:border-petal-400 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-700">📋 Habits</p>
+              {todayHabits.length > 0 && (
+                <span className={`text-xs font-bold ${completedCount === todayHabits.length ? 'text-green-500' : 'text-gray-400'}`}>
+                  {completedCount}/{todayHabits.length}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              restores energy ⚡
+            </p>
+          </button>
+        )
+      })()}
 
       {/* Tasks completed */}
       <div className="bg-gradient-to-r from-petal-50 to-lavender-50 rounded-2xl p-3 border border-petal-100">
@@ -312,7 +369,7 @@ export default function PetSidebar({ state, onStateChange }: Props) {
       {/* ── Modals ── */}
       <AnimatePresence>
         {showPetPicker && <PetPicker currentId={state.petId} level={state.level} onSelect={selectPet} onClose={() => setShowPetPicker(false)} />}
-        {showCheckin && <DailyCheckin state={state} onSave={next => { saveState(next); onStateChange(next); setShowCheckin(false) }} onClose={() => setShowCheckin(false)} />}
+        {showCheckin && <HabitTracker state={state} onStateChange={(next) => { saveState(next); onStateChange(next) }} onClose={() => setShowCheckin(false)} />}
         {showAchievements && <AchievementsPanel state={state} onClose={() => setShowAchievements(false)} />}
       </AnimatePresence>
     </aside>

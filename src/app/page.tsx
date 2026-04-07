@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase } from '@/lib/gameStore'
+import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits } from '@/lib/gameStore'
+import { soundSadMusic, soundDeath } from '@/lib/feedback'
 import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
 import MobileHeader from '@/components/MobileHeader'
 import QuestBoard from '@/components/QuestBoard'
@@ -15,26 +16,49 @@ type Tab = 'quests' | 'goals' | 'rewards' | 'pet'
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null)
   const [tab, setTab] = useState<Tab>('quests')
+  const [healthAlert, setHealthAlert] = useState<string | null>(null)
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     async function init() {
+      let base: GameState
       try {
         const res = await fetch('/api/state')
         const serverState = await res.json()
-        if (serverState) {
-          const ticked = tickNeeds({ ...loadState(), ...serverState })
-          saveState(ticked)
-          setState(ticked)
-          return
-        }
-      } catch {}
-      const loaded = loadState()
-      const ticked = tickNeeds(loaded)
+        base = serverState ? { ...loadState(), ...serverState } : loadState()
+      } catch {
+        base = loadState()
+      }
+
+      // Auto-create default habits for new/migrated users
+      if (!base.habits || base.habits.length === 0) {
+        base = { ...base, habits: getDefaultHabits() }
+      }
+
+      let ticked = tickNeeds(base)
+      ticked = updateDeathTimestamp(ticked)
+      ticked = checkDeathTimer(ticked)
+
+      // Health alerts on load
+      const health = getOverallHealth(ticked)
+      const penalties = getHealthPenalties(health)
+      if (penalties.petFainted) {
+        soundDeath()
+        setHealthAlert('Your pet has FAINTED! Complete tasks to revive before the countdown ends!')
+      } else if (penalties.petSick) {
+        soundSadMusic()
+        setHealthAlert('Your pet is very sick... Stars reduced by 50%. Take action now!')
+      } else if (penalties.starsReduced25) {
+        setHealthAlert('Your pet is struggling. Stars reduced by 25%.')
+      }
+
+      if (healthAlert) setTimeout(() => setHealthAlert(null), 5000)
+
       saveState(ticked)
       setState(ticked)
     }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -68,6 +92,20 @@ export default function Home() {
 
   return (
     <>
+      {/* Health alert toast */}
+      {healthAlert && (
+        <motion.div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-md w-full px-4"
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -50, opacity: 0 }}
+        >
+          <div className="bg-red-600 text-white rounded-2xl px-5 py-3 shadow-2xl text-center">
+            <p className="font-black text-sm">⚠️ {healthAlert}</p>
+          </div>
+        </motion.div>
+      )}
+
       {/* DESKTOP */}
       <div className="hidden sm:flex min-h-screen flex-col bg-cream">
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-petal-100 px-6 py-3">
