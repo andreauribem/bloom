@@ -25,6 +25,7 @@ export default function Home() {
       const params = new URLSearchParams(window.location.search)
       if (params.get('reset') === '1') {
         // Clear everything
+        localStorage.removeItem('bloom_state_v2')
         localStorage.removeItem('bloom_state_v1')
         localStorage.removeItem('questapp_state_v2')
         localStorage.removeItem('questapp_state')

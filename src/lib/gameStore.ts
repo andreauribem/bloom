@@ -391,7 +391,7 @@ export function getComboLabel(comboCount: number): string {
 }
 
 // ── LocalStorage ───────────────────────────────────────────────────────────
-const KEY = 'bloom_state_v1'
+const KEY = 'bloom_state_v2'
 
 export function loadState(): GameState {
   if (typeof window === 'undefined') return defaultState()
