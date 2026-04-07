@@ -65,7 +65,19 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       const tasksData = await responses[0].json()
       const currentState = stateRef.current
 
-      setTasks(tasksData.tasks ?? [])
+      // Debug: log if API returned error or no tasks
+      if (tasksData.error) console.warn('Task fetch error:', tasksData.error)
+
+      const fetchedTasks = tasksData.tasks ?? []
+      setTasks(fetchedTasks)
+
+      // Prune completedTaskIds: only keep last 200 entries to prevent bloat
+      if (currentState.completedTaskIds.length > 200) {
+        const pruned = currentState.completedTaskIds.slice(-200)
+        const next = { ...currentState, completedTaskIds: pruned }
+        saveState(next)
+        onStateChangeRef.current(next)
+      }
 
       let updatedState = currentState
 
@@ -582,7 +594,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       <DailyChallenges state={state} onStateChange={onStateChange} />
 
       {/* Task lists */}
-      {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState /> : (
+      {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState tasksFromApi={tasks.length} /> : (
         <div className="flex flex-col gap-5">
           {/* ── OVERDUE SECTION (always on top) ── */}
           {overdueTasks.length > 0 && (
@@ -888,7 +900,18 @@ function LoadingSkeleton() {
   return <div className="flex flex-col gap-2">{[1, 2, 3, 4].map(i => <div key={i} className="bg-white rounded-2xl p-4 shadow-card animate-pulse h-20" />)}</div>
 }
 
-function EmptyState() {
+function EmptyState({ tasksFromApi }: { tasksFromApi: number }) {
+  // Distinguish: Notion returned 0 tasks vs all were filtered
+  if (tasksFromApi === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="text-6xl mb-4">📭</div>
+        <h3 className="text-xl font-black text-gray-700">No tasks found</h3>
+        <p className="text-gray-400 mt-2 text-sm">No tasks matched the current view filter.</p>
+        <p className="text-gray-400 text-xs mt-1">Check that your Notion tasks have a Do Date = today, Sprint Status = Current, or are overdue.</p>
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="text-6xl mb-4 pet-float">🎉</div>

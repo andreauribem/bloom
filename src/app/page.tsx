@@ -92,16 +92,16 @@ export default function Home() {
 
   return (
     <>
-      {/* Health alert toast */}
+      {/* Health alert toast — positioned below mobile header */}
       {healthAlert && (
         <motion.div
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-md w-full px-4"
+          className="fixed top-16 sm:top-4 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md z-[100]"
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -50, opacity: 0 }}
         >
-          <div className="bg-red-600 text-white rounded-2xl px-5 py-3 shadow-2xl text-center">
-            <p className="font-black text-sm">⚠️ {healthAlert}</p>
+          <div className="bg-red-600 text-white rounded-2xl px-4 py-3 shadow-2xl text-center">
+            <p className="font-black text-xs sm:text-sm">⚠️ {healthAlert}</p>
           </div>
         </motion.div>
       )}

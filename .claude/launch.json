@@ -2,9 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "questapp",
-      "type": "url",
-      "url": "http://localhost:3000"
+      "name": "bloom-dev",
+      "runtimeExecutable": "/usr/local/bin/npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
     }
   ]
 }
