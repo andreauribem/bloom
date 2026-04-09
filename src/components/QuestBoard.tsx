@@ -777,51 +777,53 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
 }) {
   return (
     <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
-      className={`relative rounded-2xl overflow-hidden shadow-lg ${task.daysOverdue > 0 ? 'ring-2 ring-red-500' : ''}`}>
-      <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-800 to-petal-900 opacity-95" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
+      className={`relative rounded-2xl overflow-hidden shadow-lg ${task.daysOverdue > 0 ? 'ring-2 ring-petal-400' : ''}`}>
+      <div className="absolute inset-0 bg-gradient-to-br from-petal-50 via-white to-lavender-50" />
+      <div className="absolute inset-0 border-2 border-petal-200 rounded-2xl" />
       <motion.div className="absolute inset-0 rounded-2xl"
-        animate={{ boxShadow: ['0 0 0px rgba(255,45,126,0)', '0 0 20px rgba(255,45,126,0.5)', '0 0 0px rgba(255,45,126,0)'] }}
-        transition={{ repeat: Infinity, duration: 2 }} />
+        animate={{ boxShadow: ['0 0 0px rgba(255,92,160,0)', '0 0 15px rgba(255,92,160,0.2)', '0 0 0px rgba(255,92,160,0)'] }}
+        transition={{ repeat: Infinity, duration: 2.5 }} />
 
       <div className="relative p-4">
         <div className="flex items-center gap-2 mb-2">
-          <motion.span className="text-lg" animate={{ rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2 }}>👹</motion.span>
-          <span className="text-xs font-black text-red-400 uppercase tracking-widest">Boss Battle</span>
+          <motion.span className="text-lg" animate={{ scale: [1, 1.15, 1], rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2.5 }}>🌟</motion.span>
+          <span className="pixel-text text-[7px] text-petal-500 uppercase">Boss Quest</span>
           <OverdueBadge days={task.daysOverdue} />
-          <span className="pixel-text text-[7px] text-yellow-400 ml-auto">+{task.stars * 2}*</span>
+          <span className="pixel-text text-[7px] text-petal-500 ml-auto">+{task.stars * 2}*</span>
         </div>
 
         <div className="flex items-start gap-3">
           <button onClick={onComplete} disabled={completing}
             className={`mt-0.5 shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${
-              completing ? 'border-red-500 bg-red-500' : 'border-red-400 hover:border-red-300 hover:bg-red-400/20'
+              completing ? 'border-petal-500 bg-petal-500' : 'border-petal-300 hover:border-petal-500 hover:bg-petal-50'
             }`}>
-            {completing ? <span className="text-white text-xs">✓</span> : <span className="text-red-400 text-xs">⚔️</span>}
+            {completing ? <span className="text-white text-xs">✓</span> : <span className="text-petal-400 text-xs">⚔️</span>}
           </button>
           <div className="flex-1">
-            <p className="font-black text-white text-sm leading-snug">{task.title}</p>
+            <p className="font-black text-gray-800 text-sm leading-snug">{task.title}</p>
             <div className="flex gap-2 mt-1.5 flex-wrap">
-              {task.taskType && <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/70 font-semibold">{task.taskType.split(' ').slice(-1)[0]}</span>}
-              {formatTime(task.timeConsuming) && <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-yellow-300 font-semibold">⏱ {formatTime(task.timeConsuming)}</span>}
-              {task.dueDate && <span className="text-xs text-white/50">📅 {new Date(task.dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+              {task.taskType && <span className="text-xs px-2 py-0.5 rounded-full bg-petal-100 text-petal-500 font-semibold">{task.taskType.split(' ').slice(-1)[0]}</span>}
+              {formatTime(task.timeConsuming) && <span className="text-xs px-2 py-0.5 rounded-full bg-lavender-100 text-lavender-500 font-semibold">⏱ {formatTime(task.timeConsuming)}</span>}
+              {task.dueDate && <span className="text-xs text-gray-400">📅 {new Date(task.dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
             </div>
           </div>
         </div>
 
-        <div className="mt-3 flex gap-3 flex-wrap">
+        <div className="pixel-divider my-3" />
+
+        <div className="flex gap-3 flex-wrap">
           {isTimerActive ? (
-            <button onClick={onStopTimer} className="text-xs font-bold text-red-300 hover:text-red-200">⏹️ Stop timer</button>
+            <button onClick={onStopTimer} className="text-xs font-bold text-red-400 hover:text-red-500">⏹️ Stop timer</button>
           ) : (
-            <button onClick={onStartTimer} disabled={hasAnyTimer} className="text-xs font-bold text-green-300 hover:text-green-200 disabled:opacity-30">▶️ Start timer</button>
+            <button onClick={onStartTimer} disabled={hasAnyTimer} className="text-xs font-bold text-green-500 hover:text-green-600 disabled:opacity-30">▶️ Start timer</button>
           )}
           {hasSubtasks && (
-            <button onClick={onToggleSubtasks} className="text-xs font-bold text-lavender-300 hover:text-lavender-200">
+            <button onClick={onToggleSubtasks} className="text-xs font-bold text-lavender-400 hover:text-lavender-500">
               {expanded ? '▾ Hide subtasks' : '▸ Show subtasks'}
             </button>
           )}
           {!hasSubtasks && (
-            <button onClick={onBreakdown} disabled={breaking} className="text-xs font-bold text-petal-300 hover:text-petal-200">
+            <button onClick={onBreakdown} disabled={breaking} className="text-xs font-bold text-petal-400 hover:text-petal-500">
               {breaking ? '✨ Breaking down...' : '✨ Break into 15-min tasks'}
             </button>
           )}

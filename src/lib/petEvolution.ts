@@ -12,9 +12,9 @@ const STAGE_LEVELS: Record<PetStage, [number, number]> = {
 
 // Each pet has different emojis per evolution stage
 const EVOLUTION_SPRITES: Record<string, Record<PetStage, string>> = {
-  bear:    { baby: '🧸', teen: '🐻', adult: '🐻‍❄️', legendary: '🐻' },
+  bear:    { baby: '🧸', teen: '🐻', adult: '🐻‍❄️', legendary: '🧸' },
   raccoon: { baby: '🦔', teen: '🦝', adult: '🦡',  legendary: '🦝' },
-  cat:     { baby: '🐱', teen: '😺', adult: '🐈',  legendary: '🐱' },
+  cat:     { baby: '🐱', teen: '😺', adult: '😸',   legendary: '😻' },
   fox:     { baby: '🐣', teen: '🦊', adult: '🦊',  legendary: '🦊' },
   bunny:   { baby: '🐰', teen: '🐇', adult: '🐇',  legendary: '🐰' },
   frog:    { baby: '🥒', teen: '🐸', adult: '🐸',  legendary: '🐸' },
@@ -47,10 +47,10 @@ export function checkEvolution(oldLevel: number, newLevel: number): boolean {
 
 export function getStageLabel(stage: PetStage): string {
   switch (stage) {
-    case 'baby': return '🥚 Baby'
-    case 'teen': return '🌱 Teen'
-    case 'adult': return '⭐ Adult'
-    case 'legendary': return '👑 Legendary'
+    case 'baby': return 'Baby'
+    case 'teen': return 'Teen'
+    case 'adult': return 'Adult'
+    case 'legendary': return 'Legend'
   }
 }
 
