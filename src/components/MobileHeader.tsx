@@ -47,7 +47,7 @@ export default function MobileHeader({ state, onStateChange }: Props) {
             <div className="w-12 h-12 rounded-2xl bg-petal-50 flex items-center justify-center text-2xl border-2 border-petal-200">
               {petEmoji}
             </div>
-            <span className="absolute -top-1 -right-1 text-xs bg-petal-500 text-white rounded-full px-1 py-0.5 font-black leading-none">
+            <span className="absolute -top-1 -right-1 pixel-text text-[6px] bg-petal-500 text-white rounded-md px-1 py-0.5 leading-none">
               {state.level}
             </span>
             <span className="absolute -bottom-1 -right-1 text-xs">
@@ -59,20 +59,20 @@ export default function MobileHeader({ state, onStateChange }: Props) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-black text-gray-700">{state.petName}</span>
-              <span className="text-xs text-petal-500 font-bold">⭐ {state.stars}</span>
+              <span className="pixel-text text-[7px] text-petal-500">* {state.stars}</span>
             </div>
-            <div className="w-full h-2 bg-petal-100 rounded-full overflow-hidden">
+            <div className="w-full h-2.5 bg-petal-100 rounded-sm overflow-hidden">
               <motion.div
-                className="h-full xp-bar rounded-full"
+                className="h-full xp-bar rounded-sm pixel-bar"
                 animate={{ width: `${xpPercent}%` }}
                 transition={{ duration: 0.5 }}
               />
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-xs text-gray-400">Lv{state.level} · {state.xp}xp</span>
+              <span className="pixel-text text-[6px] text-gray-400">LV{state.level} · {state.xp}xp</span>
               {state.streak > 0 && (
-                <span className={`text-xs font-bold ${state.streak >= 3 ? 'text-orange-500' : 'text-gray-400'}`}>
-                  {state.streak >= 3 ? '🔥' : '📅'} {state.streak}d
+                <span className={`pixel-text text-[6px] ${state.streak >= 3 ? 'text-orange-500' : 'text-gray-400'}`}>
+                  {state.streak >= 3 ? '🔥' : ''} {state.streak}d
                 </span>
               )}
             </div>

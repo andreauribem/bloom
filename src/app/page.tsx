@@ -126,9 +126,14 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <span className="text-xl">🌸</span>
               <span className="font-black text-gray-800 text-lg">Bloom</span>
-              <span className="text-xs text-gray-400">✦ your cozy lil&apos; biz adventure ✦</span>
+              <span className="pixel-text text-[7px] text-petal-300 hidden md:inline">~ your cozy lil adventure ~</span>
             </div>
-            <span className="text-sm font-bold text-petal-500">⭐ {state.stars} stars</span>
+            <div className="flex items-center gap-3">
+              <span className="pixel-text text-[8px] text-petal-400">LV{state.level}</span>
+              <span className="pixel-text text-[9px] text-petal-500">
+                {state.stars}<span className="text-yellow-400 ml-0.5">*</span>
+              </span>
+            </div>
           </div>
         </header>
         <main className="max-w-6xl mx-auto w-full p-6 flex gap-5 items-start">
@@ -187,10 +192,10 @@ export default function Home() {
                 }`}
               >
                 <span className="text-xl">{t.emoji}</span>
-                <span className={`text-xs font-bold ${tab === t.id ? 'text-petal-500' : 'text-gray-400'}`}>
+                <span className={`pixel-text text-[6px] leading-tight ${tab === t.id ? 'text-petal-500' : 'text-gray-400'}`}>
                   {t.label}
                 </span>
-                {tab === t.id && <div className="w-4 h-0.5 bg-petal-500 rounded-full" />}
+                {tab === t.id && <div className="w-6 h-1 bg-petal-400 mt-0.5" style={{ imageRendering: 'pixelated' }} />}
                 {/* Notification dot for pet tab */}
                 {t.id === 'pet' && anyCritical && tab !== 'pet' && (
                   <span className="absolute top-2 right-1/4 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -223,16 +228,16 @@ function PetDetails({ state, onStateChange, petEmoji }: {
       {/* Big pet display */}
       <div className="bg-white rounded-3xl p-6 shadow-card flex flex-col items-center gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs bg-lavender-100 text-lavender-600 rounded-full px-2 py-0.5 font-bold">
+          <span className="pixel-text text-[7px] bg-lavender-100 text-lavender-500 rounded-md px-2 py-1">
             {getStageLabel(stage)}
           </span>
-          <span className="text-xs bg-petal-400 text-white rounded-full px-2 py-0.5 font-black">
-            Lv{state.level}
+          <span className="pixel-text text-[8px] bg-petal-400 text-white rounded-md px-2 py-1">
+            LV{state.level}
           </span>
         </div>
         <div className="text-8xl pet-float">{petEmoji}</div>
         <p className="text-2xl font-black text-gray-800">{state.petName}</p>
-        <p className="text-sm text-gray-400 italic">{getPetPhrase(state)}</p>
+        <p className="text-xs text-gray-400 italic">{getPetPhrase(state)}</p>
 
         {/* Overall health */}
         <div className="w-full">
@@ -325,10 +330,10 @@ function MobileNeedBar({ label, value, hint }: { label: string; value: number; h
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-card">
+    <div className="bg-white rounded-2xl p-4 shadow-card cozy-card">
       <p className="text-xs font-bold text-gray-500 mb-1">{label}</p>
-      <p className="text-xl font-black text-gray-800">{value}</p>
-      <p className="text-xs text-gray-400">{sub}</p>
+      <p className="pixel-text text-sm text-gray-800 leading-relaxed">{value}</p>
+      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
     </div>
   )
 }

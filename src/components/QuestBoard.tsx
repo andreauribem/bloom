@@ -473,7 +473,11 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-black text-gray-800">🗺️ Quest Board</h1>
+          <h1 className="text-2xl font-black text-gray-800">
+            <span className="pixel-text text-[10px] text-petal-400 mr-1">*</span>
+            Quest Board
+            <span className="pixel-text text-[10px] text-lavender-300 ml-1">*</span>
+          </h1>
           <p className="text-sm text-gray-400">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
@@ -552,30 +556,30 @@ export default function QuestBoard({ state, onStateChange }: Props) {
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white rounded-2xl p-3 shadow-card">
+        <div className="bg-white rounded-2xl p-3 shadow-card cozy-card">
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs font-bold text-gray-500">🎯 Daily XP</span>
-            <span className="text-xs font-black text-petal-500">{dailyXP}/{state.dailyXPGoal}</span>
+            <span className="pixel-text text-[7px] text-petal-500">{dailyXP}/{state.dailyXPGoal}</span>
           </div>
-          <div className="w-full h-2 bg-petal-100 rounded-full overflow-hidden">
-            <motion.div className="h-full xp-bar rounded-full" animate={{ width: `${dailyProgress}%` }} transition={{ duration: 0.5 }} />
+          <div className="w-full h-2.5 bg-petal-100 rounded-sm overflow-hidden">
+            <motion.div className="h-full xp-bar rounded-sm pixel-bar" animate={{ width: `${dailyProgress}%` }} transition={{ duration: 0.5 }} />
           </div>
-          {dailyProgress >= 100 && <p className="text-xs text-green-500 font-bold mt-1">Goal reached! 🎉</p>}
+          {dailyProgress >= 100 && <p className="pixel-text text-[6px] text-green-500 mt-1">COMPLETE!</p>}
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-card text-center">
+        <div className="bg-white rounded-2xl p-3 shadow-card text-center cozy-card">
           <p className="text-xs font-bold text-gray-500 mb-1">🔥 Streak</p>
-          <p className="text-2xl font-black text-gray-800">{state.streak}</p>
-          <p className="text-xs text-gray-400">days in a row</p>
+          <p className="pixel-text text-base text-gray-800">{state.streak}</p>
+          <p className="text-xs text-gray-400">days</p>
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-card">
+        <div className="bg-white rounded-2xl p-3 shadow-card cozy-card">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-xs font-bold text-gray-500">⚔️ Lv {state.level}</span>
-            <span className="text-xs text-gray-400">{xpPercent}%</span>
+            <span className="pixel-text text-[7px] text-gray-500">LV{state.level}</span>
+            <span className="pixel-text text-[7px] text-lavender-400">{xpPercent}%</span>
           </div>
-          <div className="w-full h-2 bg-lavender-100 rounded-full overflow-hidden">
-            <motion.div className="h-full bg-lavender-400 rounded-full" animate={{ width: `${xpPercent}%` }} transition={{ duration: 0.5 }} />
+          <div className="w-full h-2.5 bg-lavender-100 rounded-sm overflow-hidden">
+            <motion.div className="h-full bg-lavender-400 rounded-sm pixel-bar" animate={{ width: `${xpPercent}%` }} transition={{ duration: 0.5 }} />
           </div>
-          <p className="text-xs text-gray-400 mt-1">{state.xp} / {xpForLevel(state.level)} XP</p>
+          <p className="text-xs text-gray-400 mt-1">{state.xp}/{xpForLevel(state.level)} XP</p>
         </div>
       </div>
 
@@ -785,7 +789,7 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
           <motion.span className="text-lg" animate={{ rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2 }}>👹</motion.span>
           <span className="text-xs font-black text-red-400 uppercase tracking-widest">Boss Battle</span>
           <OverdueBadge days={task.daysOverdue} />
-          <span className="ml-auto text-xs font-black text-yellow-400">+{task.stars * 2}⭐</span>
+          <span className="pixel-text text-[7px] text-yellow-400 ml-auto">+{task.stars * 2}*</span>
         </div>
 
         <div className="flex items-start gap-3">
@@ -868,7 +872,7 @@ function TaskCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
             <OverdueBadge days={task.daysOverdue} />
             {formatTime(task.timeConsuming) && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-400 font-semibold">⏱ {formatTime(task.timeConsuming)}</span>}
             {task.dueDate && <span className="text-xs text-gray-400">📅 {new Date(task.dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-            <span className="text-xs font-black text-petal-500 ml-auto">+{task.stars}⭐</span>
+            <span className="pixel-text text-[7px] text-petal-500 ml-auto">+{task.stars}*</span>
           </div>
         </div>
       </div>
@@ -901,13 +905,12 @@ function LoadingSkeleton() {
 }
 
 function EmptyState({ tasksFromApi }: { tasksFromApi: number }) {
-  // Distinguish: Notion returned 0 tasks vs all were filtered
   if (tasksFromApi === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <div className="text-6xl mb-4">📭</div>
-        <h3 className="text-xl font-black text-gray-700">No tasks found</h3>
-        <p className="text-gray-400 mt-2 text-sm">No tasks matched the current view filter.</p>
+        <h3 className="pixel-text text-xs text-gray-600 mb-2">NO QUESTS FOUND</h3>
+        <p className="text-gray-400 text-sm">No tasks matched the current view filter.</p>
         <p className="text-gray-400 text-xs mt-1">Check that your Notion tasks have a Do Date = today, Sprint Status = Current, or are overdue.</p>
       </div>
     )
@@ -915,8 +918,9 @@ function EmptyState({ tasksFromApi }: { tasksFromApi: number }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="text-6xl mb-4 pet-float">🎉</div>
-      <h3 className="text-xl font-black text-gray-700">All quests complete!</h3>
-      <p className="text-gray-400 mt-2 text-sm">You crushed it today. Go redeem a reward ✨</p>
+      <h3 className="pixel-text text-xs text-gray-600 mb-2">ALL QUESTS COMPLETE!</h3>
+      <p className="text-gray-400 text-sm">You crushed it today. Go redeem a reward ~</p>
+      <div className="pixel-divider w-16 mx-auto mt-3" />
     </div>
   )
 }

@@ -94,12 +94,12 @@ export default function PetSidebar({ state, onStateChange }: Props) {
 
         {/* Level + Stage badge */}
         <div className="absolute top-3 right-3 flex items-center gap-1">
-          <span className="text-xs bg-petal-400 text-white rounded-full px-2 py-0.5 font-black">
-            Lv{state.level}
+          <span className="pixel-text text-[7px] bg-petal-400 text-white rounded-md px-2 py-1">
+            LV{state.level}
           </span>
         </div>
         <div className="absolute top-3 left-3">
-          <span className="text-xs bg-lavender-100 text-lavender-600 rounded-full px-2 py-0.5 font-bold">
+          <span className="pixel-text text-[6px] bg-lavender-100 text-lavender-500 rounded-md px-2 py-1">
             {getStageLabel(stage)}
           </span>
         </div>
@@ -293,13 +293,13 @@ export default function PetSidebar({ state, onStateChange }: Props) {
 
       {/* ── Stars + Streak row ── */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white rounded-2xl p-3 shadow-card text-center">
-          <p className="text-xs text-gray-400 mb-0.5">stars</p>
-          <p className="text-2xl font-black text-petal-500">⭐ {state.stars}</p>
+        <div className="bg-white rounded-2xl p-3 shadow-card text-center cozy-card">
+          <p className="pixel-text text-[6px] text-gray-400 mb-1">STARS</p>
+          <p className="pixel-text text-sm text-petal-500">⭐ {state.stars}</p>
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-card text-center">
-          <p className="text-xs text-gray-400 mb-0.5">streak</p>
-          <p className={`text-2xl font-black ${streakColor}`}>
+        <div className="bg-white rounded-2xl p-3 shadow-card text-center cozy-card">
+          <p className="pixel-text text-[6px] text-gray-400 mb-1">STREAK</p>
+          <p className={`pixel-text text-sm ${streakColor}`}>
             {state.streak >= 3 ? '🔥' : '📅'} {state.streak}
           </p>
           <p className="text-xs text-gray-400">days</p>

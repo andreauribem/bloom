@@ -85,8 +85,11 @@ export default function RewardStore({ state, onStateChange }: Props) {
     <div className="w-full sm:w-72 shrink-0 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-gray-800">🏪 Reward Store</h2>
-          <p className="text-xs text-gray-400">spend your stars wisely ✨</p>
+          <h2 className="text-lg font-black text-gray-800">
+            <span className="pixel-text text-[10px] text-lavender-300 mr-1">*</span>
+            Reward Store
+          </h2>
+          <p className="text-xs text-gray-400">spend your stars wisely ~</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
@@ -98,8 +101,8 @@ export default function RewardStore({ state, onStateChange }: Props) {
 
       {/* Stars balance */}
       <div className={`rounded-2xl p-4 text-white text-center ${penalties.rewardStoreLocked ? 'bg-gray-400' : 'bg-gradient-to-r from-petal-500 to-lavender-500'}`}>
-        <p className="text-xs opacity-80">your balance</p>
-        <p className="text-3xl font-black">⭐ {state.stars}</p>
+        <p className="pixel-text text-[6px] opacity-70 mb-1">BALANCE</p>
+        <p className="pixel-text text-lg">* {state.stars}</p>
       </div>
 
       {/* Locked warning */}
@@ -140,7 +143,7 @@ export default function RewardStore({ state, onStateChange }: Props) {
                   <p className="font-bold text-gray-800 text-sm leading-tight truncate">
                     {reward.title}
                   </p>
-                  <p className="text-xs text-petal-500 font-bold">⭐ {reward.cost} stars</p>
+                  <p className="pixel-text text-[6px] text-petal-500">* {reward.cost}</p>
                 </div>
                 <div className="flex gap-1">
                   <button
