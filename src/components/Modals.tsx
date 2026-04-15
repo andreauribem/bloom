@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { PETS, GameState, ALL_ACHIEVEMENTS, saveState } from '@/lib/gameStore'
+import { isFoxy, getFoxyImage } from '@/lib/petEvolution'
 
 // ── Pet Picker ─────────────────────────────────────────────────────────────
 export function PetPickerModal({ currentId, onSelect, onClose }: {
@@ -26,7 +27,17 @@ export function PetPickerModal({ currentId, onSelect, onClose }: {
               className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all ${
                 currentId === pet.id ? 'border-petal-400 bg-petal-50' : 'border-gray-100 hover:border-petal-200'
               }`}>
-              <span className="text-4xl mb-1">{pet.sprite}</span>
+              {isFoxy(pet.id) ? (
+                <img
+                  src={getFoxyImage(1, 'happy', 0)}
+                  alt={pet.name}
+                  className="w-12 h-12 object-contain mb-1"
+                  style={{ imageRendering: 'pixelated' }}
+                  draggable={false}
+                />
+              ) : (
+                <span className="text-4xl mb-1">{pet.sprite}</span>
+              )}
               <span className="text-xs font-bold text-gray-700">{pet.name}</span>
             </button>
           ))}

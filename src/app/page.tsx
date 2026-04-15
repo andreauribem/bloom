@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits } from '@/lib/gameStore'
+import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits, migrateToFoxy } from '@/lib/gameStore'
 import { soundSadMusic, soundDeath } from '@/lib/feedback'
-import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
+import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq, isFoxy, getFoxyImage, getFoxyMood } from '@/lib/petEvolution'
 import MobileHeader from '@/components/MobileHeader'
 import QuestBoard from '@/components/QuestBoard'
 import RewardStore from '@/components/RewardStore'
@@ -47,6 +47,8 @@ export default function Home() {
       if (!base.habits || base.habits.length === 0) {
         base = { ...base, habits: getDefaultHabits() }
       }
+
+      base = migrateToFoxy(base)
 
       let ticked = tickNeeds(base)
       ticked = updateDeathTimestamp(ticked)
@@ -170,7 +172,7 @@ export default function Home() {
           )}
           {tab === 'pet' && (
             <div className="p-4">
-              <PetDetails state={state} onStateChange={setState} petEmoji={petEmoji} />
+              <PetDetails state={state} onStateChange={setState} />
             </div>
           )}
         </div>
@@ -182,7 +184,7 @@ export default function Home() {
               { id: 'quests',  label: 'Quests',  emoji: '⚔️' },
               { id: 'goals',   label: 'Goals',   emoji: '📊' },
               { id: 'rewards', label: 'Rewards', emoji: '🏪' },
-              { id: 'pet',     label: 'Pet',     emoji: petEmoji },
+              { id: 'pet',     label: 'Pet',     emoji: isFoxy(state.petId) ? '__foxy__' : petEmoji },
             ] as { id: Tab; label: string; emoji: string }[]).map(t => (
               <button
                 key={t.id}
@@ -191,7 +193,17 @@ export default function Home() {
                   tab === t.id ? 'text-petal-500' : 'text-gray-400'
                 }`}
               >
-                <span className="text-xl">{t.emoji}</span>
+                {t.emoji === '__foxy__' ? (
+                  <img
+                    src={getFoxyImage(state.level, 'happy', state.stars)}
+                    alt="Foxy"
+                    className="w-6 h-6 object-contain"
+                    style={{ imageRendering: 'pixelated' }}
+                    draggable={false}
+                  />
+                ) : (
+                  <span className="text-xl">{t.emoji}</span>
+                )}
                 <span className={`pixel-text text-[6px] leading-tight ${tab === t.id ? 'text-petal-500' : 'text-gray-400'}`}>
                   {t.label}
                 </span>
@@ -210,11 +222,11 @@ export default function Home() {
 }
 
 // ── Pet tab content (mobile) ───────────────────────────────────────────────
-function PetDetails({ state, onStateChange, petEmoji }: {
+function PetDetails({ state, onStateChange }: {
   state: GameState
   onStateChange: (s: GameState) => void
-  petEmoji: string
 }) {
+  const petEmoji = getPetEmoji(state.petId, state.level)
   const xpPercent = Math.round((state.xp / xpForLevel(state.level)) * 100)
   const today = new Date().toISOString().split('T')[0]
   const dailyXP = state.dailyXPDate === today ? state.dailyXP : 0
@@ -222,6 +234,7 @@ function PetDetails({ state, onStateChange, petEmoji }: {
   const nextStage = getNextStageLevelReq(state.level)
   const overallHealth = getOverallHealth(state)
   const healthInfo = getHealthLabel(overallHealth)
+  const penalties = getHealthPenalties(overallHealth)
 
   return (
     <div className="flex flex-col gap-4">
@@ -235,7 +248,21 @@ function PetDetails({ state, onStateChange, petEmoji }: {
             LV{state.level}
           </span>
         </div>
-        <div className="text-8xl pet-float">{petEmoji}</div>
+        {isFoxy(state.petId) ? (
+          <img
+            src={getFoxyImage(
+              state.level,
+              getFoxyMood(state.petMood, penalties.petFainted, penalties.petSick),
+              state.stars,
+            )}
+            alt={state.petName}
+            className="w-40 h-40 object-contain pet-float"
+            style={{ imageRendering: 'pixelated' }}
+            draggable={false}
+          />
+        ) : (
+          <div className="text-8xl pet-float">{petEmoji}</div>
+        )}
         <p className="text-2xl font-black text-gray-800">{state.petName}</p>
         <p className="text-xs text-gray-400 italic">{getPetPhrase(state)}</p>
 

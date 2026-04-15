@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel } from '@/lib/gameStore'
-import { getPetEmoji } from '@/lib/petEvolution'
+import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getHealthPenalties } from '@/lib/gameStore'
+import { getPetEmoji, isFoxy, getFoxyImage, getFoxyMood } from '@/lib/petEvolution'
 import { PetPickerModal, AchievementsModal } from './Modals'
 import HabitTracker from './HabitTracker'
 
@@ -27,6 +27,7 @@ export default function MobileHeader({ state, onStateChange }: Props) {
   const dailyProgress = Math.min(100, (dailyXP / state.dailyXPGoal) * 100)
   const overallHealth = getOverallHealth(state)
   const healthInfo = getHealthLabel(overallHealth)
+  const penalties = getHealthPenalties(overallHealth)
 
   const moodEmoji = state.petMood === 'excited' ? '🤩'
     : state.petMood === 'happy' ? '😊'
@@ -44,8 +45,22 @@ export default function MobileHeader({ state, onStateChange }: Props) {
             onClick={() => setShowPetPicker(true)}
             className="relative shrink-0"
           >
-            <div className="w-12 h-12 rounded-2xl bg-petal-50 flex items-center justify-center text-2xl border-2 border-petal-200">
-              {petEmoji}
+            <div className="w-12 h-12 rounded-2xl bg-petal-50 flex items-center justify-center text-2xl border-2 border-petal-200 overflow-hidden">
+              {isFoxy(state.petId) ? (
+                <img
+                  src={getFoxyImage(
+                    state.level,
+                    getFoxyMood(state.petMood, penalties.petFainted, penalties.petSick),
+                    state.stars,
+                  )}
+                  alt={state.petName}
+                  className="w-full h-full object-contain"
+                  style={{ imageRendering: 'pixelated' }}
+                  draggable={false}
+                />
+              ) : (
+                petEmoji
+              )}
             </div>
             <span className="absolute -top-1 -right-1 pixel-text text-[6px] bg-petal-500 text-white rounded-md px-1 py-0.5 leading-none">
               {state.level}

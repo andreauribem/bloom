@@ -8,7 +8,7 @@ import {
   LevelUpModal, AchievementToast, ComboBanner, StarBurst, EvolutionModal, CelebEvent
 } from './CelebrationModals'
 import { Achievement } from '@/lib/gameStore'
-import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel } from '@/lib/petEvolution'
+import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, isFoxy, getFoxyImage } from '@/lib/petEvolution'
 import { hapticMedium, hapticSuccess, hapticHeavy, soundCoin, soundComplete, soundLevelUp, soundCombo, soundEvolution, soundAchievement, soundWarning } from '@/lib/feedback'
 import DailyChallenges from './DailyChallenges'
 import { NeedFeedback, NeedFeedbackItem } from './NeedFeedback'
@@ -325,6 +325,9 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         pushCeleb({
           type: 'evolution',
           petEmoji: getPetEmoji(currentState.petId, result.newLevel),
+          petImage: isFoxy(currentState.petId)
+            ? getFoxyImage(result.newLevel, 'happy', currentState.stars)
+            : undefined,
           aura: getLegendaryAura(currentState.petId),
           stageName: getStageLabel(newStage),
         })
@@ -442,7 +445,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         {current?.type === 'levelup' && <LevelUpModal key="lvl" level={current.level} onClose={popCeleb} />}
         {current?.type === 'achievement' && <AchievementToast key={current.achievement.id} achievement={current.achievement} onClose={popCeleb} />}
         {current?.type === 'combo' && <ComboBanner key="combo" label={current.label} starsEarned={current.starsEarned} />}
-        {current?.type === 'evolution' && <EvolutionModal key="evo" petEmoji={current.petEmoji} aura={current.aura} stageName={current.stageName} onClose={popCeleb} />}
+        {current?.type === 'evolution' && <EvolutionModal key="evo" petEmoji={current.petEmoji} petImage={current.petImage} aura={current.aura} stageName={current.stageName} onClose={popCeleb} />}
       </AnimatePresence>
 
       <AnimatePresence>

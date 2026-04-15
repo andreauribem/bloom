@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PETS, GameState, xpForLevel, saveState, ALL_ACHIEVEMENTS, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, getDeathCountdown } from '@/lib/gameStore'
-import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, getNextStageLevelReq } from '@/lib/petEvolution'
+import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, getNextStageLevelReq, isFoxy, getFoxyImage, getFoxyMood } from '@/lib/petEvolution'
 import { getAccessory } from '@/lib/accessories'
 import HabitTracker from './HabitTracker'
 
@@ -144,11 +144,25 @@ export default function PetSidebar({ state, onStateChange }: Props) {
           )}
 
           <motion.div
-            className="text-7xl select-none"
+            className="select-none flex items-center justify-center"
             animate={petAnimVariant}
             transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 2 }}
           >
-            {petEmoji}
+            {isFoxy(state.petId) ? (
+              <img
+                src={getFoxyImage(
+                  state.level,
+                  getFoxyMood(state.petMood, penalties.petFainted, penalties.petSick),
+                  state.stars,
+                )}
+                alt={state.petName}
+                className="w-28 h-28 object-contain pixelated"
+                style={{ imageRendering: 'pixelated' }}
+                draggable={false}
+              />
+            ) : (
+              <span className="text-7xl">{petEmoji}</span>
+            )}
           </motion.div>
 
           {/* Effect accessory */}
@@ -206,8 +220,8 @@ export default function PetSidebar({ state, onStateChange }: Props) {
             </motion.div>
           )}
 
-          {/* Fainted overlay */}
-          {penalties.petFainted && (
+          {/* Fainted overlay (skip for Foxy — image already shows it) */}
+          {penalties.petFainted && !isFoxy(state.petId) && (
             <motion.div
               className="absolute inset-0 flex items-center justify-center"
               animate={{ opacity: [0.6, 1, 0.6] }}
@@ -217,8 +231,8 @@ export default function PetSidebar({ state, onStateChange }: Props) {
             </motion.div>
           )}
 
-          {/* Sick overlay */}
-          {penalties.petSick && !penalties.petFainted && (
+          {/* Sick overlay (skip for Foxy — image already shows it) */}
+          {penalties.petSick && !penalties.petFainted && !isFoxy(state.petId) && (
             <motion.div
               className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-lg"
               animate={{ y: [0, -3, 0], opacity: [0.6, 1, 0.6] }}
@@ -415,7 +429,17 @@ function PetPicker({ currentId, level, onSelect, onClose }: { currentId: string;
               className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all ${
                 currentId === pet.id ? 'border-petal-400 bg-petal-50' : 'border-gray-100 hover:border-petal-200'
               }`}>
-              <span className="text-4xl mb-1">{getPetEmoji(pet.id, level)}</span>
+              {isFoxy(pet.id) ? (
+                <img
+                  src={getFoxyImage(level, 'happy', 0)}
+                  alt={pet.name}
+                  className="w-12 h-12 object-contain mb-1"
+                  style={{ imageRendering: 'pixelated' }}
+                  draggable={false}
+                />
+              ) : (
+                <span className="text-4xl mb-1">{getPetEmoji(pet.id, level)}</span>
+              )}
               <span className="text-xs font-bold text-gray-700">{pet.name}</span>
             </button>
           ))}

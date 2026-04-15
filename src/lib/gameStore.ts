@@ -106,14 +106,16 @@ export type GameState = {
   habitLogs: HabitLog[]
   // Death mechanic
   deathTimestamp: number | null  // when health hit 0, null if alive
+  // One-time migration flag: switched mascot to Foxy
+  foxyMigrated?: boolean
 }
 
 // ── Pets ───────────────────────────────────────────────────────────────────
 export const PETS: Pet[] = [
+  { id: 'foxy',    name: 'Foxy',    emoji: '🦊', sprite: '🦊' },
   { id: 'bear',    name: 'Mochi',   emoji: '🐻', sprite: '🐻' },
   { id: 'raccoon', name: 'Rocky',   emoji: '🦝', sprite: '🦝' },
   { id: 'cat',     name: 'Luna',    emoji: '🐱', sprite: '🐱' },
-  { id: 'fox',     name: 'Maple',   emoji: '🦊', sprite: '🦊' },
   { id: 'bunny',   name: 'Biscuit', emoji: '🐰', sprite: '🐰' },
   { id: 'frog',    name: 'Lumi',    emoji: '🐸', sprite: '🐸' },
 ]
@@ -391,16 +393,21 @@ export function getComboLabel(comboCount: number): string {
 }
 
 // ── LocalStorage ───────────────────────────────────────────────────────────
-const KEY = 'bloom_state_v2'
+const KEY = 'bloom_state_v4'
 
 export function loadState(): GameState {
   if (typeof window === 'undefined') return defaultState()
   try {
     const raw = localStorage.getItem(KEY)
-    const oldRaw = localStorage.getItem('questapp_state_v2') || localStorage.getItem('questapp_state')
     if (raw) return { ...defaultState(), ...JSON.parse(raw) }
+    // Migrate from older keys: keep all progress but switch mascot to Foxy
+    const oldRaw = localStorage.getItem('bloom_state_v3')
+      || localStorage.getItem('bloom_state_v2')
+      || localStorage.getItem('questapp_state_v2')
+      || localStorage.getItem('questapp_state')
     if (oldRaw) {
-      const migrated = { ...defaultState(), ...JSON.parse(oldRaw) }
+      const prev = JSON.parse(oldRaw)
+      const migrated = { ...defaultState(), ...prev, petId: 'foxy', petName: 'Foxy' }
       localStorage.setItem(KEY, JSON.stringify(migrated))
       return migrated
     }
@@ -413,11 +420,18 @@ export function saveState(state: GameState) {
   localStorage.setItem(KEY, JSON.stringify(state))
 }
 
+// One-time: force-switch existing users from the old mascots to Foxy.
+// Runs once per state object, tracked via the `foxyMigrated` flag.
+export function migrateToFoxy(state: GameState): GameState {
+  if (state.foxyMigrated) return state
+  return { ...state, petId: 'foxy', petName: 'Foxy', foxyMigrated: true }
+}
+
 function defaultState(): GameState {
   const today = new Date().toISOString().split('T')[0]
   return {
-    petId: 'bear',
-    petName: 'Mochi',
+    petId: 'foxy',
+    petName: 'Foxy',
     stars: 0,
     xp: 0,
     level: 1,

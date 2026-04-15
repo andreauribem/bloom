@@ -142,8 +142,8 @@ export function StarBurst({ count, x, y }: { count: number; x: number; y: number
 }
 
 // ── Evolution Modal ───────────────────────────────────────────────────────
-export function EvolutionModal({ petEmoji, aura, stageName, onClose }: {
-  petEmoji: string; aura: string; stageName: string; onClose: () => void
+export function EvolutionModal({ petEmoji, petImage, aura, stageName, onClose }: {
+  petEmoji: string; petImage?: string; aura: string; stageName: string; onClose: () => void
 }) {
   useEffect(() => {
     const t = setTimeout(onClose, 5000)
@@ -182,12 +182,22 @@ export function EvolutionModal({ petEmoji, aura, stageName, onClose }: {
         transition={{ type: 'spring', bounce: 0.5 }}
       >
         <motion.div
-          className="text-6xl mb-3"
+          className="text-6xl mb-3 flex items-center justify-center gap-1"
           initial={{ scale: 0.3, opacity: 0 }}
           animate={{ scale: [0.3, 1.4, 1], opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.3, ease: 'easeOut' }}
         >
-          {aura}{petEmoji}
+          <span>{aura}</span>
+          {petImage ? (
+            <img
+              src={petImage}
+              alt="evolved pet"
+              className="w-24 h-24 object-contain"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          ) : (
+            <span>{petEmoji}</span>
+          )}
         </motion.div>
         <p className="text-xs font-bold text-lavender-500 uppercase tracking-widest mb-1">Your pet evolved!</p>
         <p className="text-3xl font-black text-gray-800 mb-2">{stageName}</p>
@@ -209,6 +219,6 @@ type CelebEvent =
   | { type: 'levelup'; level: number }
   | { type: 'achievement'; achievement: Achievement }
   | { type: 'combo'; label: string; starsEarned: number }
-  | { type: 'evolution'; petEmoji: string; aura: string; stageName: string }
+  | { type: 'evolution'; petEmoji: string; petImage?: string; aura: string; stageName: string }
 
 export type { CelebEvent }
