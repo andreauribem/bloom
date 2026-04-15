@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits, migrateToFoxy } from '@/lib/gameStore'
 import { soundSadMusic, soundDeath } from '@/lib/feedback'
-import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq, isFoxy, getFoxyImage, getFoxyMood } from '@/lib/petEvolution'
+import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq, isFoxy, getFoxyImage, getFoxyMood, getLegendaryAura } from '@/lib/petEvolution'
+import { getAccessory } from '@/lib/accessories'
 import MobileHeader from '@/components/MobileHeader'
 import QuestBoard from '@/components/QuestBoard'
 import RewardStore from '@/components/RewardStore'
@@ -248,21 +249,80 @@ function PetDetails({ state, onStateChange }: {
             LV{state.level}
           </span>
         </div>
-        {isFoxy(state.petId) ? (
-          <img
-            src={getFoxyImage(
-              state.level,
-              getFoxyMood(state.petMood, penalties.petFainted, penalties.petSick),
-              state.stars,
-            )}
-            alt={state.petName}
-            className="w-40 h-40 object-contain pet-float"
-            style={{ imageRendering: 'pixelated' }}
-            draggable={false}
-          />
-        ) : (
-          <div className="text-8xl pet-float">{petEmoji}</div>
-        )}
+        {/* Pet sprite with accessories */}
+        <div className="relative flex items-center justify-center pt-6">
+          {/* Background accessory */}
+          {state.equippedBackground && (() => {
+            const bg = getAccessory(state.equippedBackground!)
+            return bg ? (
+              <>
+                <motion.span className="absolute -top-4 -left-8 text-3xl opacity-40" animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 3 }}>{bg.emoji}</motion.span>
+                <motion.span className="absolute -bottom-2 -right-6 text-3xl opacity-40" animate={{ y: [0, 4, 0] }} transition={{ repeat: Infinity, duration: 4 }}>{bg.emoji}</motion.span>
+                <motion.span className="absolute top-1/3 -left-10 text-2xl opacity-30" animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 3.5 }}>{bg.emoji}</motion.span>
+              </>
+            ) : null
+          })()}
+
+          {/* Hat accessory */}
+          {state.equippedHat && (() => {
+            const hat = getAccessory(state.equippedHat!)
+            return hat ? (
+              <motion.div
+                className="absolute top-0 left-1/2 -translate-x-1/2 text-4xl z-10"
+                animate={{ y: [0, -3, 0] }}
+                transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 2 }}
+              >
+                {hat.emoji}
+              </motion.div>
+            ) : null
+          })()}
+
+          {/* Legendary aura (only if no hat) */}
+          {stage === 'legendary' && !state.equippedHat && (
+            <motion.div
+              className="absolute top-0 left-1/2 -translate-x-1/2 text-4xl"
+              animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+            >
+              {getLegendaryAura(state.petId)}
+            </motion.div>
+          )}
+
+          {isFoxy(state.petId) ? (
+            <img
+              src={getFoxyImage(
+                state.level,
+                getFoxyMood(state.petMood, penalties.petFainted, penalties.petSick),
+                state.stars,
+              )}
+              alt={state.petName}
+              className="w-40 h-40 object-contain pet-float"
+              style={{ imageRendering: 'pixelated' }}
+              draggable={false}
+            />
+          ) : (
+            <div className="text-8xl pet-float">{petEmoji}</div>
+          )}
+
+          {/* Effect accessory */}
+          {state.equippedEffect && (() => {
+            const fx = getAccessory(state.equippedEffect!)
+            return fx ? (
+              <>
+                <motion.span
+                  className="absolute -right-4 top-2 text-2xl"
+                  animate={{ rotate: [0, 360], opacity: [0.6, 1, 0.6] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: 'linear' }}
+                >{fx.emoji}</motion.span>
+                <motion.span
+                  className="absolute -left-4 bottom-4 text-2xl"
+                  animate={{ rotate: [360, 0], opacity: [0.6, 1, 0.6] }}
+                  transition={{ repeat: Infinity, duration: 4, ease: 'linear' }}
+                >{fx.emoji}</motion.span>
+              </>
+            ) : null
+          })()}
+        </div>
         <p className="text-2xl font-black text-gray-800">{state.petName}</p>
         <p className="text-xs text-gray-400 italic">{getPetPhrase(state)}</p>
 
