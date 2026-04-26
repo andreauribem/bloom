@@ -24,8 +24,11 @@ export default function Home() {
     async function init() {
       // Check for ?reset=1 in URL — full fresh start
       const params = new URLSearchParams(window.location.search)
-      if (params.get('reset') === '1') {
-        // Clear everything
+      const isReset = params.get('reset') === '1'
+      if (isReset) {
+        // Clear everything — current and legacy keys
+        localStorage.removeItem('bloom_state_v4')
+        localStorage.removeItem('bloom_state_v3')
         localStorage.removeItem('bloom_state_v2')
         localStorage.removeItem('bloom_state_v1')
         localStorage.removeItem('questapp_state_v2')
@@ -36,12 +39,16 @@ export default function Home() {
       }
 
       let base: GameState
-      try {
-        const res = await fetch('/api/state')
-        const serverState = await res.json()
-        base = serverState ? { ...loadState(), ...serverState } : loadState()
-      } catch {
+      if (isReset) {
         base = loadState()
+      } else {
+        try {
+          const res = await fetch('/api/state')
+          const serverState = await res.json()
+          base = serverState ? { ...loadState(), ...serverState } : loadState()
+        } catch {
+          base = loadState()
+        }
       }
 
       // Auto-create default habits for new/migrated users
