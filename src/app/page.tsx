@@ -11,8 +11,9 @@ import QuestBoard from '@/components/QuestBoard'
 import RewardStore from '@/components/RewardStore'
 import PetSidebar from '@/components/PetSidebar'
 import ContentGoals from '@/components/ContentGoals'
+import HabitTracker from '@/components/HabitTracker'
 
-type Tab = 'quests' | 'goals' | 'rewards' | 'pet'
+type Tab = 'quests' | 'habits' | 'goals' | 'rewards' | 'pet'
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null)
@@ -168,6 +169,11 @@ export default function Home() {
               <QuestBoard state={state} onStateChange={setState} />
             </div>
           )}
+          {tab === 'habits' && (
+            <div className="p-4">
+              <HabitTracker state={state} onStateChange={setState} inline />
+            </div>
+          )}
           {tab === 'goals' && (
             <div className="p-4">
               <ContentGoals state={state} onStateChange={setState} />
@@ -190,6 +196,7 @@ export default function Home() {
           <div className="flex">
             {([
               { id: 'quests',  label: 'Quests',  emoji: '⚔️' },
+              { id: 'habits',  label: 'Habits',  emoji: '🌱' },
               { id: 'goals',   label: 'Goals',   emoji: '📊' },
               { id: 'rewards', label: 'Rewards', emoji: '🏪' },
               { id: 'pet',     label: 'Pet',     emoji: isFoxy(state.petId) ? '__foxy__' : petEmoji },

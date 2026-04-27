@@ -833,7 +833,7 @@ function BossCard({ task, completing, breaking, isTimerActive, hasAnyTimer, onCo
           <motion.span className="text-lg" animate={{ scale: [1, 1.15, 1], rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2.5 }}>🌟</motion.span>
           <span className="pixel-text text-[7px] text-petal-500 uppercase">Boss Quest</span>
           <OverdueBadge days={task.daysOverdue} />
-          <span className="pixel-text text-[7px] text-petal-500 ml-auto">+{task.stars * 2}*</span>
+          <span className="pixel-text text-[7px] text-petal-500 ml-auto">+{task.stars}*</span>
         </div>
 
         <div className="flex items-start gap-3">

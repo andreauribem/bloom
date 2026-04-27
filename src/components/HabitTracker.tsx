@@ -13,14 +13,15 @@ import { NeedFeedback, NeedFeedbackItem } from './NeedFeedback'
 type Props = {
   state: GameState
   onStateChange: (s: GameState) => void
-  onClose: () => void
+  onClose?: () => void
+  inline?: boolean
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const EMOJI_OPTIONS = ['🌙', '🏃‍♀️', '💧', '📵', '📚', '🧘', '🥗', '💊', '🎨', '🎵', '✍️', '🧹', '🌿', '🐕', '💤', '🏋️', '🚶', '📖', '🍎', '💆‍♀️']
 
-export default function HabitTracker({ state, onStateChange, onClose }: Props) {
+export default function HabitTracker({ state, onStateChange, onClose, inline = false }: Props) {
   const [view, setView] = useState<'checkin' | 'manage' | 'add'>('checkin')
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null)
   const [needFeedbacks, setNeedFeedbacks] = useState<NeedFeedbackItem[]>([])
@@ -107,15 +108,9 @@ export default function HabitTracker({ state, onStateChange, onClose }: Props) {
     setEditingHabit(null)
   }
 
-  return (
-    <motion.div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center sm:items-center justify-center p-4"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-      <motion.div
-        className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl max-h-[85vh] overflow-y-auto"
-        initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
-        onClick={e => e.stopPropagation()}
-      >
-        {view === 'checkin' && (
+  const innerContent = (
+    <>
+      {view === 'checkin' && (
           <HabitCheckin
             habits={todayHabits}
             allHabits={state.habits}
@@ -143,6 +138,29 @@ export default function HabitTracker({ state, onStateChange, onClose }: Props) {
             onBack={() => { setEditingHabit(null); setView('manage') }}
           />
         )}
+    </>
+  )
+
+  if (inline) {
+    return (
+      <div className="bg-white rounded-3xl p-5 shadow-card">
+        {innerContent}
+        <AnimatePresence>
+          {needFeedbacks.map(nf => <NeedFeedback key={nf.id} item={nf} />)}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  return (
+    <motion.div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center sm:items-center justify-center p-4"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div
+        className="bg-white rounded-3xl p-5 max-w-md w-full shadow-2xl max-h-[85vh] overflow-y-auto"
+        initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {innerContent}
       </motion.div>
 
       {/* Need feedback */}
