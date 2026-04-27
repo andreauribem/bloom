@@ -21,7 +21,13 @@ type Props = {
 export default function QuestBoard({ state, onStateChange }: Props) {
   const [tasks, setTasks] = useState<QuestTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'today' | 'week' | 'month' | 'all'>('today')
+  const [view, setView] = useState<'myday' | 'today' | 'week' | 'month' | 'all'>('myday')
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const toggleSection = (key: string) => setCollapsedSections(prev => {
+    const n = new Set(prev)
+    if (n.has(key)) n.delete(key); else n.add(key)
+    return n
+  })
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -58,7 +64,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       // Only sync on first load, skip on subsequent fetches/polls
       const shouldSync = !hasSynced.current
       // Always fetch all tasks, filter client-side by date
-      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${view === 'today' ? 'today' : 'all'}`)]
+      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${(view === 'today' || view === 'myday') ? 'today' : 'all'}`)]
       if (shouldSync) fetches.push(fetch('/api/notion/sync'))
 
       const responses = await Promise.all(fetches)
@@ -129,7 +135,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const today = new Date().toISOString().split('T')[0]
 
   function getDateRange(): { from: string; to: string } | null {
-    if (view === 'today') return null // server already filters
+    if (view === 'today' || view === 'myday') return null // server already filters; myday filtered below
     if (view === 'week') {
       const now = new Date()
       const startOfWeek = new Date(now)
@@ -162,9 +168,11 @@ export default function QuestBoard({ state, onStateChange }: Props) {
     .filter(t => filter === 'all' ? true : filter === 'sonder' ? t.source === 'sonder' : t.source === 'personal')
     .filter(t => !state.completedTaskIds.includes(t.id))
     .filter(isInDateRange)
+    .filter(t => view === 'myday' ? t.doDate === today : true)
 
   const overdueTasks = filteredBySource.filter(t => t.daysOverdue > 0)
-  const nonOverdueTasks = filteredBySource.filter(t => t.daysOverdue === 0)
+  const myDayTasks = filteredBySource.filter(t => t.daysOverdue === 0 && t.doDate === today)
+  const nonOverdueTasks = filteredBySource.filter(t => t.daysOverdue === 0 && t.doDate !== today)
   const visibleTasks = filteredBySource
 
   // Group tasks by selected criteria
@@ -488,6 +496,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
         <div className="flex gap-2 flex-wrap">
           <div className="flex bg-white rounded-2xl p-1 shadow-soft border border-petal-100">
             {([
+              { id: 'myday', label: '🌟 My Day' },
               { id: 'today', label: '⚡ Today' },
               { id: 'week', label: '📅 Week' },
               { id: 'month', label: '📆 Month' },
@@ -601,35 +610,67 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       <DailyChallenges state={state} onStateChange={onStateChange} />
 
       {/* Task lists */}
-      {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState tasksFromApi={tasks.length} /> : (
+      {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState tasksFromApi={tasks.length} view={view} /> : (
         <div className="flex flex-col gap-5">
           {/* ── OVERDUE SECTION (always on top) ── */}
           {overdueTasks.length > 0 && (
-            <div>
-              <h2 className="text-sm font-black text-red-500 mb-2 ml-1 flex items-center gap-1">
-                ⏰ Overdue <span className="bg-red-100 text-red-600 rounded-full px-2 py-0.5 text-xs">{overdueTasks.length}</span>
-              </h2>
-              <div className="flex flex-col gap-2">
-                {overdueTasks.map(t => (
-                  <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
-                ))}
-              </div>
+            <CollapsibleSection
+              sectionKey="overdue"
+              title={<><span className="text-red-500">⏰ Overdue</span> <span className="bg-red-100 text-red-600 rounded-full px-2 py-0.5 text-xs">{overdueTasks.length}</span></>}
+              titleClass="text-red-500"
+              collapsed={collapsedSections.has('overdue')}
+              onToggle={() => toggleSection('overdue')}
+            >
+              {overdueTasks.map(t => (
+                <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+              ))}
+            </CollapsibleSection>
+          )}
+
+          {/* ── MY DAY SECTION (only on non-myday views; myday view shows it as default) ── */}
+          {view !== 'myday' && myDayTasks.length > 0 && (
+            <CollapsibleSection
+              sectionKey="myday"
+              title={<>🌟 My Day <span className="text-gray-400 font-normal">({myDayTasks.length})</span></>}
+              titleClass="text-petal-500"
+              collapsed={collapsedSections.has('myday')}
+              onToggle={() => toggleSection('myday')}
+            >
+              {myDayTasks.map(t => (
+                <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+              ))}
+            </CollapsibleSection>
+          )}
+
+          {/* ── MY DAY: when view is myday, render the myday tasks directly (no separate group) ── */}
+          {view === 'myday' && myDayTasks.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {myDayTasks.map(t => (
+                <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
+              ))}
             </div>
           )}
 
-          {/* ── GROUPED TASKS ── */}
-          {groupTasks(nonOverdueTasks).map(group => (
-            <div key={group.label}>
-              <h2 className="text-sm font-black text-gray-600 mb-2 ml-1">
-                {group.emoji} {group.label} <span className="text-gray-400 font-normal">({group.tasks.length})</span>
-              </h2>
-              <div className="flex flex-col gap-2">
+          {/* ── GROUPED TASKS (collapsed by default to reduce overwhelm) ── */}
+          {view !== 'myday' && groupTasks(nonOverdueTasks).map(group => {
+            const key = `group:${group.label}`
+            // collapsed by default — user opts in to expand
+            const isCollapsed = !collapsedSections.has(`open:${key}`)
+            return (
+              <CollapsibleSection
+                key={group.label}
+                sectionKey={key}
+                title={<>{group.emoji} {group.label} <span className="text-gray-400 font-normal">({group.tasks.length})</span></>}
+                titleClass="text-gray-600"
+                collapsed={isCollapsed}
+                onToggle={() => toggleSection(`open:${key}`)}
+              >
                 {group.tasks.map(t => (
                   <TaskCardWrapper key={t.id} task={t} {...cardProps(t)} />
                 ))}
-              </div>
-            </div>
-          ))}
+              </CollapsibleSection>
+            )
+          })}
         </div>
       )}
     </div>
@@ -909,7 +950,52 @@ function LoadingSkeleton() {
   return <div className="flex flex-col gap-2">{[1, 2, 3, 4].map(i => <div key={i} className="bg-white rounded-2xl p-4 shadow-card animate-pulse h-20" />)}</div>
 }
 
-function EmptyState({ tasksFromApi }: { tasksFromApi: number }) {
+// ── Collapsible section ───────────────────────────────────────────────────
+function CollapsibleSection({ title, titleClass = 'text-gray-600', collapsed, onToggle, children }: {
+  sectionKey: string
+  title: React.ReactNode
+  titleClass?: string
+  collapsed: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className={`w-full text-sm font-black ${titleClass} mb-2 ml-1 flex items-center gap-1 hover:opacity-80 transition-opacity`}
+      >
+        <span className={`inline-block transition-transform text-xs ${collapsed ? '' : 'rotate-90'}`}>▸</span>
+        {title}
+      </button>
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-2">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function EmptyState({ tasksFromApi, view }: { tasksFromApi: number; view: string }) {
+  if (view === 'myday') {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="text-6xl mb-4">🌟</div>
+        <h3 className="pixel-text text-xs text-gray-600 mb-2">NOTHING PLANNED FOR TODAY</h3>
+        <p className="text-gray-400 text-sm">Set a Do Date = today on tasks in Notion to see them here.</p>
+        <p className="text-gray-400 text-xs mt-2">Or switch to ⚡ Today to see your full sprint + overdue.</p>
+      </div>
+    )
+  }
   if (tasksFromApi === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
