@@ -108,6 +108,12 @@ export type GameState = {
   deathTimestamp: number | null  // when health hit 0, null if alive
   // One-time migration flag: switched mascot to Foxy
   foxyMigrated?: boolean
+  // Monthly quests
+  currentMonthKey: string         // YYYY-MM, resets monthly counters when changes
+  monthlyTasksCompleted: number
+  monthlyBossesCompleted: number
+  monthlyHabitsCompleted: number
+  claimedMonthlyQuests: string[]  // ids (YYYY-MM) of claimed monthly quests
 }
 
 // ── Pets ───────────────────────────────────────────────────────────────────
@@ -472,6 +478,38 @@ function defaultState(): GameState {
     habits: [],
     habitLogs: [],
     deathTimestamp: null,
+    currentMonthKey: today.slice(0, 7),
+    monthlyTasksCompleted: 0,
+    monthlyBossesCompleted: 0,
+    monthlyHabitsCompleted: 0,
+    claimedMonthlyQuests: [],
+  }
+}
+
+// ── Monthly counter reset ─────────────────────────────────────────────────
+export function tickMonthly(state: GameState): GameState {
+  const monthKey = new Date().toISOString().slice(0, 7)
+  if (state.currentMonthKey === monthKey) return state
+  return {
+    ...state,
+    currentMonthKey: monthKey,
+    monthlyTasksCompleted: 0,
+    monthlyBossesCompleted: 0,
+    monthlyHabitsCompleted: 0,
+  }
+}
+
+export function claimMonthlyQuest(state: GameState, questId: string, stars: number, xp: number): GameState {
+  if (state.claimedMonthlyQuests?.includes(questId)) return state
+  let newXp = state.xp + xp
+  let newLevel = state.level
+  while (newXp >= xpForLevel(newLevel)) { newXp -= xpForLevel(newLevel); newLevel++ }
+  return {
+    ...state,
+    stars: state.stars + stars,
+    xp: newXp,
+    level: newLevel,
+    claimedMonthlyQuests: [...(state.claimedMonthlyQuests ?? []), questId],
   }
 }
 
@@ -566,6 +604,13 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
   // Earn a game token (max 3) — for future mini-games
   const gameTokens = Math.min(3, (state.gameTokens ?? 0) + 1)
 
+  // Monthly counters: reset if new month, then increment
+  const monthKey = new Date().toISOString().slice(0, 7)
+  const monthChanged = state.currentMonthKey !== monthKey
+  const monthlyTasks = (monthChanged ? 0 : (state.monthlyTasksCompleted ?? 0)) + 1
+  const monthlyBosses = (monthChanged ? 0 : (state.monthlyBossesCompleted ?? 0)) + (isBoss ? 1 : 0)
+  const monthlyHabits = monthChanged ? 0 : (state.monthlyHabitsCompleted ?? 0)
+
   let next: GameState = {
     ...state,
     stars: state.stars + starsEarned,
@@ -590,6 +635,10 @@ export function earnStars(state: GameState, baseAmount: number, isBoss = false):
     bossesDefeatedToday: (state.todayTasksDate === today ? (state.bossesDefeatedToday ?? 0) : 0) + (isBoss ? 1 : 0),
     todayTasksDate: today,
     claimedChallenges: state.todayTasksDate === today ? (state.claimedChallenges ?? []) : [],
+    currentMonthKey: monthKey,
+    monthlyTasksCompleted: monthlyTasks,
+    monthlyBossesCompleted: monthlyBosses,
+    monthlyHabitsCompleted: monthlyHabits,
   }
   next.petMood = deriveMood(next)
 
@@ -805,7 +854,21 @@ export function completeHabit(state: GameState, habitId: string): { state: GameS
   const delta = score * 12 - 15
   const wellness = Math.min(100, Math.max(0, (state.wellness ?? 50) + delta))
 
-  const next: GameState = { ...state, habitLogs: newLogs, energy: finalEnergy, wellness }
+  // Monthly habit counter: reset if new month, then increment
+  const monthKey = new Date().toISOString().slice(0, 7)
+  const monthChanged = state.currentMonthKey !== monthKey
+  const monthlyHabits = (monthChanged ? 0 : (state.monthlyHabitsCompleted ?? 0)) + 1
+
+  const next: GameState = {
+    ...state,
+    habitLogs: newLogs,
+    energy: finalEnergy,
+    wellness,
+    currentMonthKey: monthKey,
+    monthlyTasksCompleted: monthChanged ? 0 : (state.monthlyTasksCompleted ?? 0),
+    monthlyBossesCompleted: monthChanged ? 0 : (state.monthlyBossesCompleted ?? 0),
+    monthlyHabitsCompleted: monthlyHabits,
+  }
   return { state: { ...next, petMood: deriveMood(next) }, energyBoost: totalBoost, allComplete }
 }
 

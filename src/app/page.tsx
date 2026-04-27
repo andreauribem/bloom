@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits, migrateToFoxy } from '@/lib/gameStore'
+import { loadState, GameState, PETS, xpForLevel, saveState, tickNeeds, getOverallHealth, getHealthLabel, getPetPhrase, getHealthPenalties, checkDeathTimer, updateDeathTimestamp, getDefaultHabits, migrateToFoxy, tickMonthly } from '@/lib/gameStore'
 import { soundSadMusic, soundDeath } from '@/lib/feedback'
 import { getPetEmoji, getStageForLevel, getStageLabel, getNextStageLevelReq, isFoxy, getFoxyImage, getFoxyMood, getLegendaryAura } from '@/lib/petEvolution'
 import { getAccessory } from '@/lib/accessories'
@@ -62,6 +62,7 @@ export default function Home() {
       let ticked = tickNeeds(base)
       ticked = updateDeathTimestamp(ticked)
       ticked = checkDeathTimer(ticked)
+      ticked = tickMonthly(ticked)
 
       // Health alerts on load
       const health = getOverallHealth(ticked)

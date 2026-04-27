@@ -11,6 +11,7 @@ import { Achievement } from '@/lib/gameStore'
 import { getPetEmoji, getLegendaryAura, getStageForLevel, getStageLabel, isFoxy, getFoxyImage } from '@/lib/petEvolution'
 import { hapticMedium, hapticSuccess, hapticHeavy, soundCoin, soundComplete, soundLevelUp, soundCombo, soundEvolution, soundAchievement, soundWarning } from '@/lib/feedback'
 import DailyChallenges from './DailyChallenges'
+import MonthlyQuestCard from './MonthlyQuestCard'
 import { NeedFeedback, NeedFeedbackItem } from './NeedFeedback'
 
 type Props = {
@@ -605,6 +606,9 @@ export default function QuestBoard({ state, onStateChange }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Monthly Quest */}
+      <MonthlyQuestCard state={state} onStateChange={onStateChange} />
 
       {/* Daily Challenges */}
       <DailyChallenges state={state} onStateChange={onStateChange} />
