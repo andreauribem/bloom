@@ -1,5 +1,5 @@
 // Bloom Service Worker — auto-updates the PWA cache
-const CACHE_NAME = 'bloom-v1'
+const CACHE_NAME = 'bloom-v2'
 
 // On install, skip waiting to activate immediately
 self.addEventListener('install', () => self.skipWaiting())

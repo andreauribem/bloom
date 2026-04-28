@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QuestTask } from '@/lib/notion'
+import { QuestTask, CompletedTask } from '@/lib/notion'
 import { GameState, earnStars, saveState, getComboLabel, getComboMultiplier, xpForLevel, formatTime, applyOverduePenalty, getOverallHealth, getHealthPenalties } from '@/lib/gameStore'
 import {
   LevelUpModal, AchievementToast, ComboBanner, StarBurst, EvolutionModal, CelebEvent
@@ -22,7 +22,10 @@ type Props = {
 export default function QuestBoard({ state, onStateChange }: Props) {
   const [tasks, setTasks] = useState<QuestTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'myday' | 'today' | 'week' | 'month' | 'all'>('myday')
+  const [view, setView] = useState<'myday' | 'today' | 'week' | 'month' | 'all' | 'done'>('myday')
+  const [doneTasks, setDoneTasks] = useState<CompletedTask[]>([])
+  const [loadingDone, setLoadingDone] = useState(false)
+  const [doneDays, setDoneDays] = useState(30)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const toggleSection = (key: string) => setCollapsedSections(prev => {
     const n = new Set(prev)
@@ -56,17 +59,14 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   const popCeleb = () => setCelebQueue(q => q.slice(1))
   const current = celebQueue[0] ?? null
 
-  const hasSynced = useRef(false)
-
-  // ── Fetch tasks — sync only on first load for speed ──
+  // ── Fetch tasks — sync runs on every poll so Notion-side completions reflect ──
   const fetchTasks = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      // Only sync on first load, skip on subsequent fetches/polls
-      const shouldSync = !hasSynced.current
-      // Always fetch all tasks, filter client-side by date
-      const fetches: Promise<Response>[] = [fetch(`/api/notion/tasks?view=${(view === 'today' || view === 'myday') ? 'today' : 'all'}`)]
-      if (shouldSync) fetches.push(fetch('/api/notion/sync'))
+      const fetches: Promise<Response>[] = [
+        fetch(`/api/notion/tasks?view=${(view === 'today' || view === 'myday') ? 'today' : 'all'}`),
+        fetch('/api/notion/sync'),
+      ]
 
       const responses = await Promise.all(fetches)
       const tasksData = await responses[0].json()
@@ -88,9 +88,8 @@ export default function QuestBoard({ state, onStateChange }: Props) {
 
       let updatedState = currentState
 
-      // Sync: detect tasks completed in Notion (first load only)
-      if (shouldSync && responses[1]) {
-        hasSynced.current = true
+      // Sync: detect tasks completed in Notion (every poll)
+      if (responses[1]) {
         const syncData = await responses[1].json()
         const completedInNotion = (syncData.tasks ?? []) as QuestTask[]
         const newlyCompleted = completedInNotion.filter(
@@ -129,8 +128,28 @@ export default function QuestBoard({ state, onStateChange }: Props) {
   useEffect(() => {
     fetchTasks()
     const interval = setInterval(() => fetchTasks(true), 60_000)
-    return () => clearInterval(interval)
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchTasks(true) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [fetchTasks])
+
+  // ── Fetch completed tasks for the Done view ──
+  const fetchDone = useCallback(async (days: number) => {
+    setLoadingDone(true)
+    try {
+      const res = await fetch(`/api/notion/completed?days=${days}`)
+      const data = await res.json()
+      setDoneTasks(data.tasks ?? [])
+    } catch (e) { console.error(e) }
+    finally { setLoadingDone(false) }
+  }, [])
+
+  useEffect(() => {
+    if (view === 'done') fetchDone(doneDays)
+  }, [view, doneDays, fetchDone])
 
   // ── Visible tasks with date + source filtering ──
   const today = new Date().toISOString().split('T')[0]
@@ -502,6 +521,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
               { id: 'week', label: '📅 Week' },
               { id: 'month', label: '📆 Month' },
               { id: 'all', label: '📋 All' },
+              { id: 'done', label: '✅ Done' },
             ] as { id: typeof view; label: string }[]).map(v => (
               <button key={v.id} onClick={() => { setView(v.id); setShowDatePicker(false) }}
                 className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${view === v.id && !showDatePicker ? 'bg-petal-500 text-white' : 'text-gray-500 hover:text-petal-500'}`}>
@@ -613,8 +633,13 @@ export default function QuestBoard({ state, onStateChange }: Props) {
       {/* Daily Challenges */}
       <DailyChallenges state={state} onStateChange={onStateChange} />
 
+      {/* Done view */}
+      {view === 'done' && (
+        <DoneList tasks={doneTasks} loading={loadingDone} days={doneDays} onChangeDays={setDoneDays} />
+      )}
+
       {/* Task lists */}
-      {loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState tasksFromApi={tasks.length} view={view} /> : (
+      {view !== 'done' && (loading ? <LoadingSkeleton /> : visibleTasks.length === 0 ? <EmptyState tasksFromApi={tasks.length} view={view} /> : (
         <div className="flex flex-col gap-5">
           {/* ── OVERDUE SECTION (always on top) ── */}
           {overdueTasks.length > 0 && (
@@ -676,7 +701,7 @@ export default function QuestBoard({ state, onStateChange }: Props) {
             )
           })}
         </div>
-      )}
+      ))}
     </div>
   )
 
@@ -1017,5 +1042,99 @@ function EmptyState({ tasksFromApi, view }: { tasksFromApi: number; view: string
       <p className="text-gray-400 text-sm">You crushed it today. Go redeem a reward ~</p>
       <div className="pixel-divider w-16 mx-auto mt-3" />
     </div>
+  )
+}
+
+// ── Done tasks list (review what's been validated) ────────────────────────
+function DoneList({ tasks, loading, days, onChangeDays }: {
+  tasks: CompletedTask[]
+  loading: boolean
+  days: number
+  onChangeDays: (d: number) => void
+}) {
+  // Group by completion day (YYYY-MM-DD from completedAt)
+  const groups = new Map<string, CompletedTask[]>()
+  for (const t of tasks) {
+    const key = (t.completedAt ?? '').slice(0, 10) || 'unknown'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(t)
+  }
+  const sortedKeys = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a))
+
+  const totalStars = tasks.reduce((sum, t) => sum + (t.stars || 0), 0)
+
+  function fmtDay(key: string): string {
+    if (key === 'unknown') return 'No date'
+    const today = new Date().toISOString().slice(0, 10)
+    if (key === today) return 'Today'
+    const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+    if (key === yest) return 'Yesterday'
+    return new Date(key + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-white rounded-2xl p-3 shadow-card flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-gray-500">Last</span>
+          {[7, 14, 30, 60, 90].map(d => (
+            <button key={d} onClick={() => onChangeDays(d)}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${days === d ? 'bg-petal-500 text-white' : 'bg-gray-50 text-gray-500 hover:text-petal-500'}`}>
+              {d}d
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-gray-500">
+          {tasks.length} done · <span className="text-petal-500 font-bold">{totalStars}⭐</span>
+        </span>
+      </div>
+
+      {loading ? <LoadingSkeleton /> : tasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="text-6xl mb-4">📭</div>
+          <h3 className="pixel-text text-xs text-gray-600 mb-2">NOTHING DONE YET</h3>
+          <p className="text-gray-400 text-sm">No completed tasks in the last {days} days.</p>
+        </div>
+      ) : (
+        sortedKeys.map(key => {
+          const items = groups.get(key)!
+          const dayStars = items.reduce((s, t) => s + (t.stars || 0), 0)
+          return (
+            <div key={key}>
+              <div className="flex items-center justify-between mb-2 ml-1">
+                <p className="text-sm font-black text-gray-700">{fmtDay(key)}</p>
+                <p className="text-xs text-gray-400">{items.length} · <span className="text-petal-500 font-bold">{dayStars}⭐</span></p>
+              </div>
+              <div className="flex flex-col gap-2">
+                {items.map(t => <DoneCard key={t.id} task={t} />)}
+              </div>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+function DoneCard({ task }: { task: CompletedTask }) {
+  const sourceLabel = task.source === 'sonder' ? '🏢' : '👑'
+  const time = task.completedAt
+    ? new Date(task.completedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : ''
+  return (
+    <a href={task.notionUrl} target="_blank" rel="noopener noreferrer"
+       className="bg-white rounded-2xl p-3 shadow-card border border-gray-50 flex items-center gap-3 hover:border-petal-200 transition-colors">
+      <span className="shrink-0 w-6 h-6 rounded-full bg-green-400 flex items-center justify-center text-white text-xs">✓</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-gray-700 truncate">{task.title}</p>
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+          <span>{sourceLabel}</span>
+          {task.taskType && <span>{task.taskType.split(' ').slice(-1)[0]}</span>}
+          {task.projectName && <span className="truncate">· {task.projectName}</span>}
+          {time && <span className="ml-auto shrink-0">{time}</span>}
+        </div>
+      </div>
+      <span className="pixel-text text-[7px] text-petal-500 shrink-0">+{task.stars}*</span>
+    </a>
   )
 }

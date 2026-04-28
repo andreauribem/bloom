@@ -222,34 +222,87 @@ export async function getAllTasks(): Promise<QuestTask[]> {
 }
 
 // ── Recently completed tasks (for Notion sync) ───────────────────────────
-export async function getRecentlyCompletedTasks(): Promise<QuestTask[]> {
-  const today = new Date().toISOString().split('T')[0]
+// Uses last_edited_time so we catch tasks marked Done directly in Notion
+// even when Completion Date wasn't auto-set or is from another day.
+export async function getRecentlyCompletedTasks(daysBack = 7): Promise<QuestTask[]> {
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const [sonderRes, pbRes] = await Promise.all([
     notion.databases.query({
       database_id: DB.sonderTasks,
       filter: {
         and: [
           { property: 'Status', status: { equals: 'Done' } },
-          { property: 'Completion Date', date: { equals: today } },
+          { timestamp: 'last_edited_time', last_edited_time: { on_or_after: since } },
         ],
       },
-      page_size: 30,
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 50,
     }).catch(() => ({ results: [] })),
     notion.databases.query({
       database_id: DB.pbTasks,
       filter: {
         and: [
           { property: 'Status', status: { equals: 'Done' } },
-          { property: 'Completion Date', date: { equals: today } },
+          { timestamp: 'last_edited_time', last_edited_time: { on_or_after: since } },
         ],
       },
-      page_size: 20,
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 30,
     }).catch(() => ({ results: [] })),
   ])
   return [
     ...sonderRes.results.map(p => mapSonderTask(p)),
     ...pbRes.results.map(mapPbTask),
   ]
+}
+
+// ── Completed tasks for the Done tab (with completion metadata) ──────────
+export type CompletedTask = QuestTask & {
+  completedAt: string | null   // last_edited_time as ISO
+  completionDate: string | null // Completion Date prop, if set
+}
+
+export async function getCompletedTasks(daysBack = 30): Promise<CompletedTask[]> {
+  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
+  const [sonderRes, pbRes] = await Promise.all([
+    notion.databases.query({
+      database_id: DB.sonderTasks,
+      filter: {
+        and: [
+          { property: 'Status', status: { equals: 'Done' } },
+          { timestamp: 'last_edited_time', last_edited_time: { on_or_after: since } },
+        ],
+      },
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 100,
+    }).catch(() => ({ results: [] })),
+    notion.databases.query({
+      database_id: DB.pbTasks,
+      filter: {
+        and: [
+          { property: 'Status', status: { equals: 'Done' } },
+          { timestamp: 'last_edited_time', last_edited_time: { on_or_after: since } },
+        ],
+      },
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 100,
+    }).catch(() => ({ results: [] })),
+  ])
+
+  const projectNames = await fetchProjectNames(sonderRes.results)
+
+  const enrich = (page: any, base: QuestTask): CompletedTask => ({
+    ...base,
+    completedAt: page.last_edited_time ?? null,
+    completionDate: getDate(page, 'Completion Date'),
+  })
+
+  const all: CompletedTask[] = [
+    ...sonderRes.results.map((p: any) => enrich(p, mapSonderTask(p, projectNames))),
+    ...pbRes.results.map((p: any) => enrich(p, mapPbTask(p))),
+  ]
+  // Sort by completedAt desc
+  return all.sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
 }
 
 // ── Subtasks ──────────────────────────────────────────────────────────────
